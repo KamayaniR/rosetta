@@ -13,6 +13,7 @@ import { runBatch } from "./sandbox/runner.ts";
 import { compareOutcomes } from "./tagged.ts";
 import { TARGET_PATH } from "./tracer.ts";
 import type { Observation } from "./types.ts";
+import { portLineEvidence, type EvidenceSummary, type LineEvidence } from "./evidence.ts";
 
 export type Port = {
   sessionId: string;
@@ -25,6 +26,8 @@ export type Port = {
   lint: { hits: string[]; ok: boolean };
   attempts: number;
   agreement?: { total: number; equal: number; lowOnly: number; mismatches: string[] };
+  lineEvidence?: LineEvidence[];
+  evidenceSummary?: EvidenceSummary;
   createdAt: Date;
 };
 
@@ -106,7 +109,12 @@ export async function build(opts: { sessionId: string; maxRetries?: number; log?
     const port: Port = {
       sessionId, version, code, compileOk: diagnostics.length === 0, diagnostics, ruleMap, unknownTags, lint, attempts: attempt, createdAt: new Date(),
     };
-    if (port.compileOk && lint.ok) port.agreement = await agreement(code, obs);
+    if (port.compileOk && lint.ok) {
+      port.agreement = await agreement(code, obs);
+      const ev = await portLineEvidence(code, ruleMap, obs);
+      port.lineEvidence = ev.lines;
+      port.evidenceSummary = ev.summary;
+    }
     await store.insertMany("ports", [port]);
     log(`  port v${version}: compile ${port.compileOk ? "OK" : `FAIL (${diagnostics.length})`}, lint ${lint.ok ? "OK" : "FAIL"} (${lint.hits.length} observed literals), ${ruleMap.length} tagged lines${unknownTags.length ? `, unknown tags ${unknownTags.join(",")}` : ""}`);
     last = port;

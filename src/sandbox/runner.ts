@@ -14,6 +14,7 @@ export type RunResult = {
   altOutcomes?: Outcome[];
   durationMs: number;
   sideEffects: string[];
+  coverage: string[]; // coverage keys from the first run (only meaningful for instrumented code)
   env: Env;
 };
 
@@ -56,7 +57,7 @@ export async function runBatch(code: string, filename: string, inputs: CallInput
       worker.on("message", (m: any) => {
         if (m.type === "start") inFlight = m.idx;
         else if (m.type === "result") {
-          results[m.idx] = { ...fold(m.outcomes), durationMs: m.durationMs, sideEffects: m.sideEffects, env: m.env };
+          results[m.idx] = { ...fold(m.outcomes), durationMs: m.durationMs, sideEffects: m.sideEffects, coverage: m.coverage ?? [], env: m.env };
           inFlight = undefined;
         } else if (m.type === "done") finish("done");
       });
@@ -73,6 +74,7 @@ export async function runBatch(code: string, filename: string, inputs: CallInput
           nondeterministic: false,
           durationMs: 0,
           sideEffects: [],
+          coverage: [],
           env: FALLBACK_ENV,
         };
       }

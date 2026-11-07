@@ -16,7 +16,9 @@ const WATCHED = ["console", "process", "require", "Date", "setTimeout", "setInte
 
 // Runs before the target. Captures builtins the harness needs (target may monkeypatch them later).
 const PRELUDE = new vm.Script(`"use strict";
-var __fx = [], __fns = [];
+var __fx = [], __fns = [], __cov = {};
+function __c(i) { __cov[i] = 1; }
+function __sw(i, v) { var t = typeof v; if (t === "string" || t === "number") { var s = String(v); if (s.length <= 60) __cov["s" + i + ":" + s] = 1; } return v; }
 var __H = { apply: Reflect.apply, parse: JSON.parse, stringify: JSON.stringify, isArray: Array.isArray,
   keys: Object.keys, fnToString: Function.prototype.toString, WeakSet: WeakSet, BigInt: BigInt, Symbol: Symbol };
 (function (g) {
@@ -88,7 +90,7 @@ const CALL = new vm.Script(`"use strict";
     else if (isObj && "name" in e && "message" in e) outcome = { kind: "throw", errorName: name, errorMessage: msg };
     else outcome = { kind: "throw", value: enc(e, new H.WeakSet(), 0) };
   }
-  return H.stringify({ outcome: outcome, fx: __fx.slice() });
+  return H.stringify({ outcome: outcome, fx: __fx.slice(), cov: H.keys(__cov) });
 })()`, { filename: "rosetta-call.js" });
 
 const env: Env = {
@@ -109,7 +111,7 @@ function liftFunctions(input: CallInput, fns: string[]): CallInput {
   return { val: walk(input.val), options: walk(input.options), extra: input.extra?.map((e) => walk(e)!) };
 }
 
-function runOnce(input: CallInput): { outcome: Outcome; ms: number; effects: string[] } {
+function runOnce(input: CallInput): { outcome: Outcome; ms: number; effects: string[]; cov: string[] } {
   const t0 = performance.now();
   const sandbox = Object.create(null);
   const ctx = vm.createContext(sandbox, { codeGeneration: { strings: false, wasm: false } });
@@ -121,16 +123,19 @@ function runOnce(input: CallInput): { outcome: Outcome; ms: number; effects: str
     moduleScript.runInContext(ctx, { timeout: callTimeoutMs });
     sandbox.__input = JSON.stringify(lifted);
     const res = JSON.parse(CALL.runInContext(ctx, { timeout: callTimeoutMs }) as string);
-    return { outcome: res.outcome, ms: performance.now() - t0, effects: res.fx };
+    return { outcome: res.outcome, ms: performance.now() - t0, effects: res.fx, cov: res.cov };
   } catch (e: any) {
     // Only host-side failures land here: timeouts, target code failing at load time, bad function sources.
     let outcome: Outcome;
     if (e?.code === "ERR_SCRIPT_EXECUTION_TIMEOUT") outcome = { kind: "timeout" };
     else if (/call stack/i.test(String(e?.message))) outcome = { kind: "crash", errorName: "RangeError", errorMessage: String(e.message) };
     else outcome = { kind: "crash", errorName: String(e?.name ?? "Error"), errorMessage: `harness: ${String(e?.message ?? e)}` };
-    let effects: string[] = [];
-    try { effects = JSON.parse(vm.runInContext("JSON.stringify(__fx)", ctx, { timeout: 50 })); } catch {}
-    return { outcome, ms: performance.now() - t0, effects };
+    let effects: string[] = [], cov: string[] = [];
+    try {
+      const r = JSON.parse(vm.runInContext("JSON.stringify({ fx: __fx, cov: Object.keys(__cov) })", ctx, { timeout: 50 }));
+      effects = r.fx; cov = r.cov;
+    } catch {}
+    return { outcome, ms: performance.now() - t0, effects, cov };
   }
 }
 
@@ -144,6 +149,7 @@ parentPort!.on("message", (jobs: Job[]) => {
       outcomes: runs.map((r) => r.outcome),
       durationMs: runs.reduce((s, r) => s + r.ms, 0) / runs.length,
       sideEffects: [...new Set(runs.flatMap((r) => r.effects))],
+      coverage: runs[0].cov,
       env,
     });
   }
