@@ -1,0 +1,29 @@
+{
+  "name": "rosetta",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "ping": "tsx scripts/ping.ts",
+    "guard": "tsx scripts/guard-test.ts",
+    "typecheck": "tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "private": "true",
+  "dependencies": {
+    "@google/genai": "^3.0.0",
+    "dotenv": "^18.0.9",
+    "mongodb": "^7.8.0",
+    "openai": "^7.53.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "terser": "^5.51.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
