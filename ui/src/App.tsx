@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { API, getJSON, postJSON, snapshotAt, ts, PHASES, type Ev, type View } from "./timeline";
 import { PortViewer } from "./PortViewer";
 import { TracePanel, HypothesesPanel, QuirkCourt, Drawer } from "./panels";
+import { Sponsors } from "./Sponsors";
 
 const PHASE_LABEL: Record<string, string> = { trace: "Trace", hypothesize: "Hypothesize", experiment: "Experiment", quirk_court: "Quirk Court", port: "Port", verify: "Verify", contract: "Contract" };
 
-type Section = "home" | "evidence" | "port" | "court" | "verify" | "archivist" | "agents" | "contract" | "history" | "report" | "reveal";
+type Section = "home" | "sponsors" | "evidence" | "port" | "court" | "verify" | "archivist" | "agents" | "contract" | "history" | "report" | "reveal";
 
 const SECTIONS: { id: Section; label: string; icon: string; color: string; blurb: string }[] = [
   { id: "evidence", label: "Evidence", icon: "🔬", color: "indigo", blurb: "Every run of the minified code and the rules proven from them" },
@@ -16,6 +17,7 @@ const SECTIONS: { id: Section; label: string; icon: string; color: string; blurb
   { id: "agents", label: "Agents · Fetch.ai", icon: "🤝", color: "blue", blurb: "Signed messages between the agents" },
   { id: "contract", label: "Contract", icon: "🔒", color: "rose", blurb: "The test suite that blocks bad AI edits" },
   { id: "report", label: "Report & Reveal", icon: "📜", color: "slate", blurb: "Final numbers and the original source" },
+  { id: "sponsors", label: "Sponsors", icon: "🏆", color: "pink", blurb: "What Meta, Fetch.ai, SubQ, Gemini and MongoDB do here, with numbers" },
 ];
 // old ?tab= links (README, screenshots) map onto sections
 const TAB_TO_SECTION: Record<string, Section> = { verify: "verify", archivist: "archivist", agents: "agents", contract: "contract", history: "history", report: "report", reveal: "reveal" };
@@ -209,7 +211,7 @@ export function App() {
       {!view && <div className="empty">Loading…</div>}
       {view && (
         <main className="section">
-          {section !== "report" && section !== "reveal" && <Kpis view={view} session={state.session} />}
+          {section !== "report" && section !== "reveal" && section !== "sponsors" && <Kpis view={view} session={state.session} />}
           {section === "evidence" && (
             <div className="two">
               <TracePanel view={view} evidence={evidence} />
@@ -231,6 +233,7 @@ export function App() {
             </div>
           )}
           {section === "reveal" && <Drawer view={view} sessionId={sid!} session={state.session} tab="reveal" hideTabs />}
+          {section === "sponsors" && <Sponsors sessionId={sid!} onGo={setSection} />}
         </main>
       )}
     </div>

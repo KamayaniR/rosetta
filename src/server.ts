@@ -190,6 +190,75 @@ app.post<{ Params: { id: string } }>("/sessions/:id/stop", async (req) => {
   return { ok: true };
 });
 
+// Sponsors page: per-sponsor usage for one session, computed from stored data (nothing hardcoded)
+app.get<{ Params: { id: string } }>("/sessions/:id/sponsors", async (req) => {
+  const sessionId = req.params.id;
+  const store = await getStore();
+  const [session] = await store.find<any>("sessions", { sessionId });
+  const events = await store.find<any>("events", { sessionId });
+  const llm = events.filter((e) => e.type === "llm_call").map((e) => e.payload);
+  const by = (pred: (c: any) => boolean) => {
+    const xs = llm.filter(pred);
+    return { calls: xs.length, inputTokens: xs.reduce((a, c) => a + (c.inputTokens ?? 0), 0), outputTokens: xs.reduce((a, c) => a + (c.outputTokens ?? 0), 0), seconds: Math.round(xs.reduce((a, c) => a + (c.latencyMs ?? 0), 0) / 1000) };
+  };
+  const roles = (provider: string) => Object.fromEntries([...new Set(llm.filter((c) => c.provider === provider).map((c) => c.agent))].map((a) => [a, by((c) => c.provider === provider && c.agent === a)]));
+  const hyps = await store.find<any>("hypotheses", { sessionId });
+  const count = (xs: any[], st: string) => xs.filter((h) => h.status === st).length;
+  const theorist = hyps.filter((h) => h.source === "theorist" && h.category !== "security");
+  const archivist = hyps.filter((h) => h.source === "archivist");
+  const ports = await store.find<any>("ports", { sessionId }, { sort: { version: 1 } });
+  const verifies = await store.find<any>("verify_reports", { sessionId }, { sort: { createdAt: 1 } });
+  const props = await store.find<any>("properties", { sessionId });
+  const quirks = await store.find<any>("quirks", { sessionId });
+  const reviews = events.filter((e) => e.type === "archivist_review").map((e) => e.payload);
+  const findings = await store.find<any>("archivist_findings", { sessionId });
+  const distinct = new Map(findings.map((f) => [`${f.type}:${f.fid ?? f.hid ?? f.category}`, f]));
+  const [audit] = await store.find<any>("port_audits", { sessionId }, { sort: { createdAt: -1 }, limit: 1 });
+  const msgs = await store.find<any>("agent_messages", { sessionId });
+  const prov = await store.find<any>("provenance", { sessionId });
+  const obs = await store.count("observations", { sessionId });
+  const metaPorts = ports.filter((p) => p.provider === "meta");
+  const heldFor = (v: number) => verifies.filter((x) => x.portVersion === v).pop()?.heldout?.matchRate ?? null;
+  const collections = ["observations", "hypotheses", "quirks", "ports", "verify_reports", "diff_results", "properties", "contracts", "archivist_findings", "bundle_maps", "port_audits", "security_reports", "agent_messages", "provenance", "events", "reports"];
+  const docs: Record<string, number> = {};
+  for (const c of collections) docs[c] = await store.count(c, { sessionId });
+  return {
+    meta: {
+      model: "muse-spark-1.1", total: by((c) => c.provider === "meta"), roles: roles("meta"),
+      rulesProposed: theorist.length, rulesProven: count(theorist, "proven"), rulesDisproven: count(theorist, "disproven"),
+      archivistFindingsTurnedIntoRules: archivist.length,
+      ports: metaPorts.map((p) => ({ version: p.version, compileOk: p.compileOk, attempts: p.attempts, heldout: heldFor(p.version), agreement: p.agreement ? `${p.agreement.equal}/${p.agreement.total}` : null })),
+    },
+    gemini: {
+      model: "gemini-3.8-flash", total: by((c) => c.provider === "gemini"), roles: roles("gemini"),
+      seeds: await store.count("observations", { sessionId, source: "seed" }),
+      properties: { proposed: props.length, hold: props.filter((x) => x.status === "holds").length, discarded: props.filter((x) => x.status === "wrong_property").length, portFails: props.filter((x) => x.status === "port_fails").length },
+      quirksFlagged: quirks.filter((q) => !q.security).length,
+      fixChecks: quirks.filter((q) => q.fixPredicate).length,
+      fallbacksForMeta: events.filter((e) => e.type === "provider_switched").length,
+      portsWritten: ports.filter((p) => p.provider === "gemini").length,
+    },
+    subq: {
+      model: "subq-snap-1.1", total: by((c) => c.provider === "subq"),
+      reviews: reviews.length,
+      lastContext: reviews.length ? { archivistTokens: reviews[reviews.length - 1].archivistTokens, theoristTokens: reviews[reviews.length - 1].theoristTokens, ratio: reviews[reviews.length - 1].ratio, questions: reviews[reviews.length - 1].questions } : null,
+      rulesFound: archivist.length, rulesFoundProven: count(archivist, "proven"),
+      findings: [...distinct.values()].reduce<Record<string, number>>((m, f: any) => ((m[f.type] = (m[f.type] ?? 0) + 1), m), {}),
+      audit: audit ? { portVersion: audit.portVersion, rulesChecked: audit.rulesChecked, counts: audit.counts, tokens: audit.subq?.inputTokens ?? null } : null,
+      neverExecuted: ports.filter((p) => p.evidenceSummary).map((p) => ({ version: p.version, never: p.evidenceSummary.neverExecuted, tagged: p.evidenceSummary.tagged })),
+    },
+    fetch: {
+      orchestrator: session?.orchestrator, source: session?.source ?? null,
+      agents: [...new Set(msgs.map((m) => m.fromName))],
+      messages: msgs.length, verified: msgs.filter((m) => m.verified === true).length,
+      signedSteps: prov.filter((p) => p.verified === true).length, rejected: prov.filter((p) => p.verified !== true && p.verified !== "unsigned-fallback").length,
+      serviceAgent: ALLOWLIST["rosetta_service"] ?? null,
+      addresses: ALLOWLIST,
+    },
+    mongodb: { store: store.kind, observations: obs, documents: docs, totalDocuments: Object.values(docs).reduce((a, b) => a + b, 0), events: events.length },
+  };
+});
+
 // Reveal: the ONLY code path that reads ground_truth/, and only after the session is done.
 app.get<{ Params: { id: string } }>("/sessions/:id/reveal", async (req, reply) => {
   const [session] = await (await getStore()).find<any>("sessions", { sessionId: req.params.id });

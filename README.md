@@ -218,6 +218,10 @@ Every port version, with the model that wrote it, the compile result, mismatches
 ![Reveal](docs/screenshots/09-reveal.png)
 The original `ms` source sits behind a path allowlist the agents can't get past. Only the Reveal page reads it, and only after the session ends.
 
+### Sponsors
+![Sponsors](docs/screenshots/14-sponsors.png)
+One page per session showing what each sponsor's product did, computed from the stored data (`GET /sessions/:id/sponsors`). In session A, for example: 32 of the 39 rules Muse Spark proposed were proven, and both ports it wrote compiled on the first try; 49 of 49 agent messages had a verified signature; SubQ saw 8.3× more context than the Theorist and found 17 rules; 20 of 23 Gemini property tests held; and 1,028 MongoDB documents were stored. For sessions started from ASI:One, the Agents page also shows the incoming request: the caller's address and what they asked.
+
 ### ASI:One
 | Progress card | Quirk Court cards | Report card |
 |---|---|---|
@@ -321,7 +325,7 @@ agents/.venv/bin/python agents/bureau.py     # Fetch.ai agents (optional)
 agents/.venv/bin/python agents/service.py    # rosetta agent on Agentverse / ASI:One (optional)
 ```
 
-- **Web UI:** open `http://localhost:8787` and click Start session (about 12 minutes). Replay a finished session with `?session=<id>&mode=replay`, open a section with `&view=evidence|port|court|verify|archivist|agents|contract|history|report|reveal`, and pick a port version with `&port=<n>`. `&view=contract&edit=plural` loads and runs the example edit.
+- **Web UI:** open `http://localhost:8787` and click Start session (about 12 minutes). Replay a finished session with `?session=<id>&mode=replay`, open a section with `&view=evidence|port|court|verify|archivist|agents|contract|history|report|reveal|sponsors`, and pick a port version with `&port=<n>`. `&view=contract&edit=plural` loads and runs the example edit.
 - **ASI:One:** send `@agent1q0j9cd9fn0krw3q87h4djuhgpy49nglx2ltwkpz43l2vuwqy0xnxc7q65f5 demo` or paste a JS module, then use `status` and `quirks`.
 - **CLI:** `npm run e2e` runs the full pipeline in a new session and writes `out/ms.port.ts`, `out/contract.test.ts` and `out/report.json`.
 

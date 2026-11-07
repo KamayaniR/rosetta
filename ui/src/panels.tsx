@@ -156,6 +156,13 @@ export function AgentsPanel({ view, session }: { view: View; session: any }) {
   return (
     <div className="pane agents">
       <div className="panel-h"><h3>Agents <span className="muted">Fetch.ai uAgents</span></h3><span className="muted">{fetchMode ? `${msgs.length} signed messages` : "Node orchestrator · entries unsigned (fallback)"}</span></div>
+      {session?.source?.kind === "agentverse" && (
+        <div className="incoming">
+          <span className="in-tag">Incoming request via Agentverse</span>
+          <div>Caller <span className="mono">{String(session.source.caller).slice(0, 30)}…</span> (ASI:One) asked: <b>"{String(session.source.request).replace(/^(\s*@\S+)+\s*/, "")}"</b></div>
+          <div className="muted small">The session was started from chat and run by the agents below; every step is signed by the agent that ran it.</div>
+        </div>
+      )}
       <div className="agents-body">
         <svg viewBox="0 0 300 190" className="net">
           {NODES.map((n) => {
