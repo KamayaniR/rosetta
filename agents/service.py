@@ -191,7 +191,7 @@ def restore_chats():
     try:
         for s in requests.get(f"{BACKEND}/sessions", timeout=10).json():
             src = s.get("source") or {}
-            if src.get("kind") == "agentverse" and src.get("caller") and not s.get("done") and not s.get("aborted") and src["caller"] not in chats:
+            if src.get("kind") == "agentverse" and src.get("caller") and not s.get("aborted") and src["caller"] not in chats:  # newest first; finished sessions too (decisions + report)
                 chats[src["caller"]] = {"session": s["sessionId"], "last_quirk": None, "last_card": "quirk", "phase": None, "shown_quirks": set(), "done": False}
                 print(f"[rosetta] restored chat {src['caller'][:16]}… -> {s['sessionId']}")
     except Exception as e:
