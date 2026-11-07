@@ -9,3 +9,5 @@ dist/
 __pycache__/
 .venv/
 target/uploads/
+uagents_core.log
+*.log
