@@ -18,7 +18,8 @@
     "coverage-test": "tsx scripts/coverage-test.ts",
     "archivist": "tsx scripts/archivist.ts",
     "verify": "tsx scripts/verify.ts",
-    "mutation-test": "tsx scripts/mutation-test.ts"
+    "mutation-test": "tsx scripts/mutation-test.ts",
+    "e2e": "tsx scripts/e2e.ts"
   },
   "keywords": [],
   "author": "",
