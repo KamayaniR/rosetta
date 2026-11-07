@@ -9,16 +9,18 @@ AIE Code Summit Hackathon, Nov 7 2026. Track: Software Archaeology. Solo build. 
 
 ## Contents
 1. [Problem](#problem)
-2. [What it does](#what-it-does)
-3. [Results](#results)
-4. [Walkthrough](#walkthrough)
-5. [How it works](#how-it-works)
-6. [Sponsor integrations](#sponsor-integrations)
-7. [How the results are checked](#how-the-results-are-checked)
-8. [Run it](#run-it)
-9. [Repo map](#repo-map)
-10. [Limitations](#limitations)
-11. [Disclosure](#disclosure)
+2. [Impact](#impact)
+3. [What it does](#what-it-does)
+4. [What we ran and how it was checked](#what-we-ran)
+5. [Results](#results)
+6. [Walkthrough](#walkthrough)
+7. [How it works](#how-it-works)
+8. [Sponsor integrations](#sponsor-integrations)
+9. [How the results are checked](#how-the-results-are-checked)
+10. [Run it](#run-it)
+11. [Repo map](#repo-map)
+12. [Limitations](#limitations)
+13. [Disclosure](#disclosure)
 
 ## Problem
 
@@ -26,6 +28,34 @@ AIE Code Summit Hackathon, Nov 7 2026. Track: Software Archaeology. Solo build. 
 - Rewrites and ports change behavior that other systems rely on, often without anyone noticing.
 - AI-written ports mix what was observed with what was guessed, and you can't tell which is which.
 - Nothing stops the next edit from breaking the behavior again.
+
+## Impact
+
+**Who it's for**
+- **Teams migrating legacy JavaScript** (to TypeScript, to a new framework, out of a vendored or minified bundle) that need the new code to behave like the old code, including the parts nobody wrote down.
+- **Teams reviewing AI-written code.** An AI can rewrite a module in minutes, but someone still has to check that it does the same thing. Rosetta gives that check a list of rules, the evidence for each, and a test suite.
+- **Teams that inherit code with no tests**, where the code itself is the only specification.
+- **Security and maintenance work**, where a migration is the moment to fix a dangerous behavior, but only if you know which odd behaviors other systems rely on.
+
+**The problem it addresses.** A rewrite rarely fails on the main path. It fails on the edges: what happens with an empty string, a negative number, a trailing space, a wrong type, a number just past a rounding boundary. Those edges are what other code depends on. In `ms` alone, Rosetta found that:
+- `"42 "` parses but `" 42"` doesn't;
+- `""` throws, but `"   "` returns `undefined`;
+- BigInt throws a different error type from every other bad input;
+- long format turns plural at 1.5× the unit, not at 2×.
+
+A hand-written or AI-written port could change any of these without anyone noticing. A single one of those changes, such as a "simplified" plural rule, is exactly what the contract blocked in the demo.
+
+**What changes with Rosetta**
+- **Behavior is written down from evidence, not memory.** Every rule points to the runs that support it, and rules that turn out wrong are kept as disproven, with the counterexample.
+- **Guesses are labeled.** "Proven" and "inferred" are separate, and each port line is colored by which one it rests on. Lines no real run ever executed are listed.
+- **A person decides what changes.** Odd behaviors are kept by default. Changing one is an explicit Fix decision, which is then tested. Overlapping decisions are reported as conflicts.
+- **The port is checked, not trusted.** Same outputs on every recorded run, on 2,000 fuzz inputs, and on 500 held-out inputs the system never saw.
+- **The behavior stays fixed after the migration.** The contract is a normal vitest suite that runs in CI. A later edit, by a person or an AI, that changes a proven behavior fails it, with the rule and the input named.
+- **There is an audit trail.** Every rule, port version and verdict is stored with the agent that produced it and that agent's signature.
+
+**Cost.** One full run on `ms` took about 12 minutes and 25–30 model calls (Meta, Gemini, SubQ). It produced 35–46 proven rules, a typed port, and a contract of about 400 tests. Doing the same by hand means reading minified code, writing probe inputs, and writing tests for each edge case, which usually takes hours to days for a module like this. And a manual approach doesn't produce the evidence links or the held-out check.
+
+**What it doesn't do yet.** It has been run end to end on one library. The fuzz generators are tuned for functions that take strings and numbers. It works on a single module at a time, not on a whole application. See [Limitations](#limitations).
 
 ## What it does
 
@@ -40,6 +70,53 @@ AIE Code Summit Hackathon, Nov 7 2026. Track: Software Archaeology. Solo build. 
 | Quirk Court: surprising behaviors that a person marks Preserve, Fix or Flag, in the web UI or in ASI:One | Quirk Court page, ASI:One |
 | An equivalence report: differential fuzzing, a held-out set the agents never see, property tests, a security pass | Verify page, `out/report.json` |
 | A behavioral contract: a vitest + fast-check suite, plus a way to run it against an edited port | `out/contract.test.ts`, Contract page |
+
+<a name="what-we-ran"></a>
+## What we ran and how it was checked
+
+**The code being migrated** is `ms`, a real npm library by Vercel that converts durations: `ms("2h")` gives `7200000`, and `ms(60000)` gives `"1m"`. We minified it with terser so every name is scrambled. That copy, `target/ms.min.js`, stands in for "code nobody on the team understands". The original source was kept in `ground_truth/`, which the agents can't read.
+
+**The system is the code in this repo.** For each session it does the following, and all of it is code you can rerun:
+
+1. **Runs the minified code.** It runs `target/ms.min.js` hundreds of times in a sandbox (`src/sandbox/`) and stores every input and output in MongoDB. Session A has 449 recorded runs.
+2. **Writes rules.** Muse Spark writes rules about the behavior. Each rule comes with a check in code (`applies` / `holds`) that the system evaluates against the real runs (`src/predicate.ts`). A person doesn't decide whether a rule holds; the check does.
+3. **Writes the port.** Muse Spark writes the TypeScript port (`out/ms.port.ts`). It has to compile under strict TypeScript (`src/portcheck.ts`).
+4. **Runs both versions on the same inputs and compares the outputs** (`src/verify.ts`). The comparison is strict: same return value or same error type, `NaN`/`-0`/`undefined` treated exactly, and so on. It's done on:
+   - every recorded run (436/436 in session A);
+   - 2,000 new inputs from fast-check (2000/2000);
+   - 500 held-out inputs from a fixed seed. These are generated once, stored separately, and never shown to any agent (500/500).
+5. **Generates the contract.** The result is written out as `out/contract.test.ts`, a normal vitest file (390 tests in session A), which you can run with `npm run contract-test`.
+
+**Sample held-out inputs, run on the original and on the port** (session A, port v2 by Muse Spark; all 500 match):
+
+| Input | Original `ms` | Rosetta's TypeScript port | |
+|---|---|---|---|
+| `f(-12)` | `"-12ms"` | `"-12ms"` | same |
+| `f(9000000, "long")` | `"3h"` | `"3h"` | same |
+| `f(1500, {long: false})` | `"2s"` | `"2s"` | same |
+| `f(-907200000, {long: "yes"})` | `"-10 days"` | `"-10 days"` | same |
+| `f("-96.\tM", "long")` | `undefined` | `undefined` | same |
+| `f({a: 1}, {long: "yes"})` | throws `Error: val is not a non-empty string…` | throws `Error: val is not a non-empty string…` | same |
+| `f("15\tHr", true)` | `undefined` | `undefined` | same |
+| `f(-3600000, {long: false})` | `"-1h"` | `"-1h"` | same |
+| `f(931815, "long")` | `"16m"` | `"16m"` | same |
+| `f(907199999)` | `"10d"` | `"10d"` | same |
+| `f("-28.  msecs", {})` | `undefined` | `undefined` | same |
+
+**How we checked the checks.** A comparison that always says "same" would be useless, so these scripts test the testing itself:
+
+| Script | What it does | Result |
+|---|---|---|
+| `npm run mutation-test -- --session <id> --version 1` | Puts 3 small bugs into a correct port (plural threshold 1.5 → 2, length limit 100 → 50, `Math.round` → `Math.floor`) and runs the fuzzer | All 3 caught. Example: `f(90000, {long: 1})` gives `"2 minutes"` in the original and `"2 minute"` in the bugged port |
+| Contract page, edited port | Runs the contract against a port with one changed number | Blocked: 4 tests fail, naming the rules |
+| `npm run security-sanity` | Runs the ReDoS check on a module we wrote to be vulnerable (`/^(a+)+$/`) and on a safe one | Vulnerable one flagged (times out at 100 characters), safe one not |
+| `npm run guard` | Tries to read the hidden original source from the agent side, including `../` paths | All blocked |
+| `npm run sandbox-test` | Runs code that hangs, overflows the stack, uses randomness, or tries to escape the sandbox | Timeouts and crashes recorded, randomness flagged, 5 escape attempts blocked |
+| `npm run provenance-test` | Sends forged, tampered and wrongly signed agent messages | All rejected |
+| `npm run declared-test` | Gives an experiment whose input doesn't match its stated call | Rejected before running |
+| `npm run contract-test` | Runs the generated vitest contract against the port | 390/390 pass |
+
+Checks that run automatically on every session: agreement with all recorded runs, fuzzing, the held-out score, property tests, line evidence, the security pass, and the final audit. Results are stored per port version and shown on the Verify, Archivist and Port history pages.
 
 ## Results
 
