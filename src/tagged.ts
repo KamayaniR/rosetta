@@ -63,6 +63,8 @@ export function tvEqual(a: TaggedValue | undefined, b: TaggedValue | undefined):
   if (!a || !b) return a === b;
   if (a.t !== b.t) return false;
   switch (a.t) {
+    // value-less tags: ignore any stray `v` (LLMs often send {"t":"undefined","v":null})
+    case "undefined": case "null": case "nan": case "inf": case "-inf": case "-0": return true;
     case "number": return Object.is(a.v, b.v);
     case "array":
       return a.v.length === b.v.length && a.v.every((e: TaggedValue, i: number) => tvEqual(e, b.v[i]));

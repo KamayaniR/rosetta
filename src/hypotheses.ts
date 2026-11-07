@@ -1,7 +1,8 @@
 // Hypothesis ledger: storage, evidence validation, status changes.
 import { getStore } from "./store.ts";
 import { emit } from "./events.ts";
-import type { Predicate } from "./predicate.ts";
+import { evalExpr, type Predicate } from "./predicate.ts";
+import type { Observation } from "./types.ts";
 
 export const CATEGORIES = ["parsing", "units", "rounding", "formatting", "errors", "types"] as const;
 export type Category = (typeof CATEGORIES)[number];
@@ -30,6 +31,21 @@ export type Hypothesis = {
 export type Draft = Pick<Hypothesis, "claim" | "category" | "confidence" | "evidence" | "predicate"> & { revises?: string };
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const words = (s: string) => new Set(norm(s).split(" ").filter((w) => w.length > 2));
+/** Word-overlap (Jaccard) similarity of two claims. Weak alone; used together with the behavioral signature. */
+export function similarity(a: string, b: string): number {
+  const A = words(a), B = words(b);
+  const inter = [...A].filter((w) => B.has(w)).length;
+  return inter / Math.max(1, A.size + B.size - inter);
+}
+
+/** Behavioral signature of an expr rule on the current evidence: which runs it applies to and pass/fail on each. */
+function signature(p: Predicate, obs: Observation[]): string | null {
+  if (p.kind !== "expr" || !obs.length) return null;
+  const r = evalExpr(p, obs);
+  if (r.invalid || r.applicable < 3) return null;
+  return `${[...r.pass].sort().join(",")}|${[...r.fail].sort().join(",")}`;
+}
 
 /** Split drafts into valid (all cited run IDs exist) and rejected. */
 export async function validateEvidence(sessionId: string, drafts: Draft[]) {
@@ -49,10 +65,26 @@ export async function listHypotheses(sessionId: string): Promise<Hypothesis[]> {
   return (await getStore()).find<Hypothesis>("hypotheses", { sessionId }, { sort: { createdRound: 1 } });
 }
 
-export async function createHypotheses(sessionId: string, round: number, drafts: Draft[], source: Hypothesis["source"] = "theorist") {
+/**
+ * Store new hypotheses, dropping restatements of live rules (disproven ones may be legitimately revised):
+ * same normalized claim, or an expr rule that behaves identically on all current observations.
+ */
+export async function createHypotheses(sessionId: string, round: number, drafts: Draft[], source: Hypothesis["source"] = "theorist", obs: Observation[] = []) {
   const store = await getStore();
-  const existing = new Set((await listHypotheses(sessionId)).map((h) => norm(h.claim)));
-  const fresh = drafts.filter((d) => !existing.has(norm(d.claim)) && existing.add(norm(d.claim)));
+  const live = (await listHypotheses(sessionId)).filter((h) => h.status !== "disproven");
+  const known = live.map((h) => ({ claim: h.claim, sig: signature(h.predicate, obs) }));
+  const fresh: Draft[] = [];
+  for (const d of drafts) {
+    const sig = signature(d.predicate, obs);
+    const dup = known.some((k) => norm(k.claim) === norm(d.claim)
+      || similarity(k.claim, d.claim) >= 0.85
+      || (sig !== null && k.sig === sig && similarity(k.claim, d.claim) >= 0.35));
+    if (dup) continue;
+    fresh.push(d);
+    known.push({ claim: d.claim, sig });
+  }
+  const dupes = drafts.length - fresh.length;
+  if (dupes) await emit(sessionId, "hypotheses_deduped", { round, dropped: dupes });
   if (!fresh.length) return [];
   const first = await store.nextSeq(`${sessionId}:hyp`, fresh.length);
   const hyps: Hypothesis[] = fresh.map((d, i) => ({

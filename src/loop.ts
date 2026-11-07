@@ -41,15 +41,21 @@ Re-send ONLY these claims, citing run IDs that appear in the observations above:
     ok = [...ok, ...second.ok];
     if (second.rejected.length) log(`  dropped ${second.rejected.length} more with bad evidence`);
   }
-  const created = await createHypotheses(sessionId, round, ok);
+  const created = await createHypotheses(sessionId, round, ok, "theorist", obs);
   // Cheap pre-check: an expr rule already contradicted by existing observations is disproven immediately.
   for (const h of created) {
     if (h.predicate.kind !== "expr") continue;
     const r = evalExpr(h.predicate, obs);
     if (r.fail.length) await updateHypothesis(h, round, "disproven", 0.05, `contradicted by existing runs ${r.fail.slice(0, 5).join(", ")}`);
   }
+  if (ok.length > created.length) log(`  dropped ${ok.length - created.length} duplicates of existing rules`);
   log(`  +${created.length} hypotheses (${created.filter((h) => h.status === "disproven").length} contradicted by existing data)`);
   return created;
+}
+
+async function safeHypothesize(opts: Required<LoopOptions>, round: number) {
+  try { return await hypothesize(opts, round); }
+  catch (e: any) { opts.log(`  hypothesize failed (${e?.message ?? e}); skipping`); return []; }
 }
 
 function selectTargets(hyps: Hypothesis[], n: number) {
@@ -69,7 +75,7 @@ export async function runLoop(o: LoopOptions) {
 
   if (!(await listHypotheses(sessionId)).length) {
     log("round 1: hypothesize");
-    await hypothesize(opts, 1);
+    await safeHypothesize(opts, 1);
   }
 
   for (let round = 1; round <= opts.roundCap; round++) {
@@ -79,7 +85,15 @@ export async function runLoop(o: LoopOptions) {
     log(`round ${round}: experiment on ${targets.map((h) => h.hid).join(", ")}`);
     await emit(sessionId, "experiment_started", { round, hids: targets.map((h) => h.hid) });
 
-    const experiments = await designExperiments({ sessionId, round, targets, ledger: hyps });
+    let experiments: Awaited<ReturnType<typeof designExperiments>>;
+    try {
+      experiments = await designExperiments({ sessionId, round, targets, ledger: hyps });
+    } catch (e: any) {
+      // Spec §10b: malformed after retry -> skip the step and log. Mark targets tested so the next round moves on.
+      log(`  experiment design failed (${e?.message ?? e}); skipping round ${round}`);
+      for (const h of targets) await updateHypothesis(h, round, h.status, h.confidence, "experiment design failed, skipped");
+      continue;
+    }
     const planned: Planned[] = experiments.flatMap((e) => e.inputs.map((p) => ({ ...p, hid: e.hid })));
     // examples-kind predicates contribute their own examples as predictions on first test
     for (const h of targets) {
@@ -140,7 +154,7 @@ export async function runLoop(o: LoopOptions) {
     if (stable >= 2) { log("  stable for 2 rounds, stopping"); break; }
     if (round < opts.roundCap) {
       log(`round ${round + 1}: hypothesize (revisions + unexplained)`);
-      await hypothesize(opts, round + 1);
+      await safeHypothesize(opts, round + 1);
     }
   }
 

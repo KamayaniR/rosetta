@@ -27,6 +27,11 @@ export const MODELS: Record<Provider, string> = {
 };
 
 const META_CALL_CAP = Number(process.env.META_CALL_CAP ?? 150);
+const MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS ?? 16384);
+const CALL_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 120_000);
+
+/** Output hit the token cap: don't retry the same provider (it would run away again). */
+class TruncatedError extends Error { name = "TruncatedError"; }
 const metaCalls = new Map<string, number>();
 
 let meta: OpenAI | undefined;
@@ -36,12 +41,14 @@ type Raw = { text: string; inputTokens: number; outputTokens: number };
 
 async function callProvider(p: Provider, system: string, user: string, temperature: number): Promise<Raw> {
   if (p === "meta") {
-    meta ??= new OpenAI({ apiKey: process.env.MODEL_API_KEY, baseURL: "https://api.meta.ai/v1" });
+    meta ??= new OpenAI({ apiKey: process.env.MODEL_API_KEY, baseURL: "https://api.meta.ai/v1", timeout: CALL_TIMEOUT_MS, maxRetries: 0 });
     const r = await meta.chat.completions.create({
       model: MODELS.meta,
       temperature,
+      max_tokens: MAX_TOKENS,
       messages: [{ role: "system", content: system }, { role: "user", content: user }],
     });
+    if (r.choices[0]?.finish_reason === "length") throw new TruncatedError(`meta output hit ${MAX_TOKENS} token cap`);
     return {
       text: r.choices[0]?.message?.content ?? "",
       inputTokens: r.usage?.prompt_tokens ?? 0,
@@ -53,8 +60,10 @@ async function callProvider(p: Provider, system: string, user: string, temperatu
     const r = await gemini.models.generateContent({
       model: MODELS.gemini,
       contents: user,
-      config: { systemInstruction: system, responseMimeType: "application/json", temperature },
+      config: { systemInstruction: system, responseMimeType: "application/json", temperature, maxOutputTokens: MAX_TOKENS,
+        httpOptions: { timeout: CALL_TIMEOUT_MS } },
     });
+    if (r.candidates?.[0]?.finishReason === "MAX_TOKENS") throw new TruncatedError(`gemini output hit ${MAX_TOKENS} token cap`);
     return {
       text: r.text ?? "",
       inputTokens: r.usageMetadata?.promptTokenCount ?? 0,
@@ -80,7 +89,11 @@ async function withBackoff(p: Provider, system: string, user: string, temperatur
   let lastErr: unknown;
   for (let i = 0; i < 3; i++) {
     try { return await callProvider(p, system, user, temperature); }
-    catch (e) { lastErr = e; if (i < 2) await sleep(500 * 2 ** i); }
+    catch (e) {
+      lastErr = e;
+      if (e instanceof TruncatedError) throw e;
+      if (i < 2) await sleep(500 * 2 ** i);
+    }
   }
   throw lastErr;
 }

@@ -119,7 +119,7 @@ export async function theorize(args: {
       : "",
     args.round === 1
       ? "Propose 8 to 15 hypotheses that together explain the observations. Cover parsing, types, errors, formatting and any unit or rounding behavior you see."
-      : "Propose new hypotheses only for behavior no current rule explains, plus the revisions above. Do not repeat existing rules. An empty list is fine.",
+      : "Propose new hypotheses only for behavior no current rule explains, plus the revisions above. NEVER restate a rule already in the ledger (proven or inferred), even in different words: duplicates are discarded. An empty list is fine.",
     args.feedback ?? "",
     `Reply: {"hypotheses":[{"claim","category" (one of ${CATEGORIES.join(", ")}),"confidence","evidence":[run IDs],"predicate","revises"?}]}`,
   ].filter(Boolean).join("\n\n");
@@ -152,6 +152,7 @@ export async function designExperiments(args: { sessionId: string; round: number
     args.targets.map((h) => `${fmtHyp(h)}\n  predicate: ${JSON.stringify(h.predicate).slice(0, 400)}`).join("\n"),
     `Other rules for context:\n${args.ledger.filter((h) => !args.targets.includes(h)).map(fmtHyp).join("\n") || "none"}`,
     `For EACH rule give 3 to 8 NEW inputs with the outcome the rule predicts for each one.
+Keep strings short: for long strings ALWAYS use {"t":"string","v":"a","repeat":N}, never write them out.
 At least one input per rule must have "disproving": true: an input where, if the rule is wrong, the result would most likely show it (edges, boundaries, near-misses, odd types).
 Reply: {"experiments":[{"hid","inputs":[{"input","expected","disproving","why"}]}]}`,
   ].join("\n\n");
