@@ -243,18 +243,45 @@ async def keep_chats(ctx: Context):
         await asyncio.to_thread(restore_chats)
 
 
+def show_tv(tv) -> str:
+    """TaggedValue -> readable JS-ish text (mirrors src/tagged.ts show)."""
+    if not tv:
+        return ""
+    t, v = tv.get("t"), tv.get("v")
+    if t == "string":
+        return json.dumps(v if len(v) <= 30 else v[:27] + "...")
+    if t == "number":
+        return str(v)
+    if t in ("undefined", "null"):
+        return t
+    if t in ("nan", "inf", "-inf", "-0"):
+        return {"nan": "NaN", "inf": "Infinity", "-inf": "-Infinity", "-0": "-0"}[t]
+    if t == "boolean":
+        return "true" if v else "false"
+    if t == "bigint":
+        return f"{v}n"
+    if t == "symbol":
+        return f"Symbol({v})"
+    if t == "function":
+        return "function"
+    if t == "array":
+        return "[" + ", ".join(show_tv(e) for e in v) + "]"
+    if t == "object":
+        return "{" + ", ".join(f"{k}: {show_tv(e)}" for k, e in v.items()) + "}"
+    return str(v)
+
+
 def fmt_obs(o: dict) -> str:
-    def show(tv):
-        if not tv:
-            return ""
-        t, v = tv.get("t"), tv.get("v")
-        if t == "string":
-            return json.dumps(v if len(v) <= 30 else v[:27] + "...")
-        return str(v) if v is not None else t
-    args = ", ".join(x for x in [show(o["input"].get("val")), show(o["input"].get("options"))] if x)
+    inp = o["input"]
+    args = [show_tv(inp.get("val"))] if inp.get("val") else []
+    if inp.get("options") or inp.get("extra"):
+        if not inp.get("val"):
+            args.append("undefined")
+        args.append(show_tv(inp.get("options")) if inp.get("options") else "undefined")
+    args += [show_tv(e) for e in inp.get("extra") or []]
     out = o["outcome"]
-    res = show(out.get("value")) if out["kind"] == "return" else f"{out['kind']} {out.get('errorName') or ''}".strip()
-    return f"f({args}) -> {res}"
+    res = show_tv(out.get("value")) if out["kind"] == "return" else f"throws {out.get('errorName') or ''}".strip() if out["kind"] == "throw" else out["kind"]
+    return f"f({', '.join(args)}) → {res}"
 
 
 @agent.on_event("startup")
