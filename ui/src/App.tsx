@@ -40,7 +40,8 @@ export function App() {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [selected, setSelected] = useState<string[]>([]);
-  const [rightTab, setRightTab] = useState<"ledger" | "court">("ledger");
+  // ?right=court and ?tab=<drawer tab> open a specific view (used for screenshots / shareable links)
+  const [rightTab, setRightTab] = useState<"ledger" | "court">(() => (new URLSearchParams(location.search).get("right") === "court" ? "court" : "ledger"));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -52,7 +53,9 @@ export function App() {
   useEffect(() => { getJSON("/sessions").then(setSessions).catch((e) => setErr(String(e))); }, [sid]);
   useEffect(() => {
     if (!sid) return;
-    history.replaceState(null, "", `?session=${sid}${mode === "replay" ? "&mode=replay" : ""}`);
+    const q = new URLSearchParams(location.search); // keep view params (tab, right) for links/screenshots
+    q.set("session", sid);
+    history.replaceState(null, "", `?${q.toString()}`);
     setState(null); setSelected([]);
     refresh(sid).catch((e) => setErr(String(e)));
   }, [sid, refresh]);

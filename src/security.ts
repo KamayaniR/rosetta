@@ -55,7 +55,7 @@ async function redosSweep(sessionId: string, round: number, src: string): Promis
       });
       // 3 separate runs per length (fresh worker each time), median of the per-call times
       const runs: Observation[][] = [];
-      for (let k = 0; k < 3; k++) runs.push(await trace({ sessionId, round, source: "experiment", inputs, run: { repeats: 1, callTimeoutMs: SWEEP_TIMEOUT_MS } }));
+      for (let k = 0; k < 3; k++) runs.push(await trace({ sessionId, round, source: "security", inputs, run: { repeats: 1, callTimeoutMs: SWEEP_TIMEOUT_MS } }));
       const points: SweepPoint[] = LENGTHS.map((length, i) => {
         const samples = runs.map((rs) => rs[i].durationMs).sort((a, b) => a - b);
         return { length, medianMs: samples[1], samples, outcome: runs[0][i].outcome.kind, runIds: runs.map((rs) => rs[i].runId) };

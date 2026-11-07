@@ -7,7 +7,8 @@ export function TracePanel({ view, evidence }: { view: View; evidence: Set<strin
   const [kind, setKind] = useState("all");
   const [open, setOpen] = useState<string | null>(null);
   const rows = useMemo(() => {
-    let r = view.observations.filter((o) => (src === "all" || o.source === src) && (kind === "all" || o.outcome.kind === kind));
+    // security sweep runs (ReDoS length sweeps) are hidden unless chosen: they are thousands of characters of "0000…"
+    let r = view.observations.filter((o) => (src === "all" ? o.source !== "security" : o.source === src) && (kind === "all" || o.outcome.kind === kind));
     if (evidence.size) r = [...r.filter((o) => evidence.has(o.runId)), ...r.filter((o) => !evidence.has(o.runId))];
     return r.slice(-600).reverse();
   }, [view.observations, src, kind, evidence]);
@@ -15,7 +16,7 @@ export function TracePanel({ view, evidence }: { view: View; evidence: Set<strin
     <div className="panel trace">
       <div className="panel-h"><h3>Trace</h3><span className="muted">{view.observations.length} runs of the minified original</span></div>
       <div className="filters">
-        <select value={src} onChange={(e) => setSrc(e.target.value)}>{["all", "seed", "experiment", "fuzz"].map((x) => <option key={x} value={x}>{x === "all" ? "all sources" : x}</option>)}</select>
+        <select value={src} onChange={(e) => setSrc(e.target.value)}>{["all", "seed", "experiment", "fuzz", "security"].map((x) => <option key={x} value={x}>{x === "all" ? "all sources" : x}</option>)}</select>
         <select value={kind} onChange={(e) => setKind(e.target.value)}>{["all", "return", "throw", "timeout", "crash"].map((x) => <option key={x} value={x}>{x === "all" ? "all outcomes" : x}</option>)}</select>
       </div>
       {evidence.size > 0 && <div className="hint">{evidence.size} runs cited by the selected rule are highlighted</div>}
@@ -203,10 +204,11 @@ export function ArchivistPanel({ view }: { view: View }) {
 
 // ---------- Bottom drawer: verify / port history / report / reveal ----------
 export function Drawer({ view, sessionId, session }: { view: View; sessionId: string; session: any }) {
-  const [tab, setTab] = useState("verify");
+  const [tab, setTab] = useState(() => new URLSearchParams(location.search).get("tab") ?? "verify");
   const [report, setReport] = useState<any>(null);
   const [reveal, setReveal] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { if (tab === "report" || tab === "reveal") load(tab); }, []); // eslint-disable-line
   const v = view.verify;
   const pct = (x?: number) => (x === undefined ? "–" : `${(x * 100).toFixed(1)}%`);
   const load = async (t: string) => {
@@ -302,6 +304,13 @@ function ContractTab({ sessionId, port }: { sessionId: string; port: any }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { getJSON(`/sessions/${sessionId}/contract`).then(setC).catch((e) => setErr(String(e))); }, [sessionId]);
+  // ?edit=plural loads a sneaky "AI edit" (plural threshold 1.5 -> 2) and runs the contract (demo / screenshots)
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get("edit") !== "plural" || !port?.code) return;
+    const edited = port.code.replace("1.5", "2");
+    setCode(edited);
+    postJSON(`/sessions/${sessionId}/contract/run`, { code: edited }).then(setRes).catch((e) => setErr(e.message));
+  }, [sessionId, port?.code]);
   const run = async () => { setBusy(true); setErr(null); try { setRes(await postJSON(`/sessions/${sessionId}/contract/run`, { code })); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   return (
     <div className="contract">

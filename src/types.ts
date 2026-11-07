@@ -20,7 +20,7 @@ export type Outcome = {
 
 export type Env = { tz: string; lang: string; node: string };
 
-export type ObservationSource = "seed" | "experiment" | "fuzz" | "heldout";
+export type ObservationSource = "seed" | "experiment" | "fuzz" | "heldout" | "security";
 
 export type Observation = {
   runId: string;
