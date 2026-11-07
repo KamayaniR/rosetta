@@ -5,9 +5,13 @@ import { runBoth, sampleInputs, shrink } from "../src/verify.ts";
 import { transpile } from "../src/portcheck.ts";
 import { showOutcome } from "../src/tagged.ts";
 import { fmtCall } from "../src/theorist.ts";
-const { values } = parseArgs({ options: { session: { type: "string" } } });
+// --version N tests a specific port (e.g. the one before a Fix was applied, so fixes don't count as "caught")
+const { values } = parseArgs({ options: { session: { type: "string" }, version: { type: "string" } } });
 const store = await getStore();
-const [port] = await store.find<any>("ports", { sessionId: values.session!, compileOk: true }, { sort: { version: -1 }, limit: 1 });
+const [port] = values.version
+  ? await store.find<any>("ports", { sessionId: values.session!, version: Number(values.version) })
+  : await store.find<any>("ports", { sessionId: values.session!, compileOk: true }, { sort: { version: -1 }, limit: 1 });
+console.log(`port v${port.version} (${port.provider ?? "?"})`);
 const mutants: [string, (c: string) => string][] = [
   ["plural threshold 1.5 -> 2", (c) => c.replace("1.5", "2")],
   ["length cap 100 -> 50", (c) => c.replace(/100\b/, "50")],

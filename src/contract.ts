@@ -136,7 +136,9 @@ export async function buildContract(sessionId: string): Promise<ContractDef> {
     const covered = fixCovered(ex);
     ex = ex.filter((e) => !covered.has(e.runId)); // fixed behavior is asserted by the quirk test instead
     const prop = h.predicate.kind === "expr" && h.predicate.applies !== "false" ? { applies: h.predicate.applies, holds: h.predicate.holds } : null;
-    if (ex.length || prop) rules.push({ hid: h.hid, claim: h.claim, category: h.category, examples: ex, property: fixes.length ? null : prop });
+    const property = fixes.length ? null : prop; // with a Fix in play, rule properties could overlap fixed inputs
+    // a rule whose examples are all covered by a Fix is asserted by that Quirk Court test instead (no empty groups)
+    if (ex.length || property) rules.push({ hid: h.hid, claim: h.claim, category: h.category, examples: ex, property });
   }
   // held-out regression snapshot: 200 held-out inputs with the ORIGINAL's outcomes (fix-covered inputs excluded)
   const [held] = await store.find<{ inputs: CallInput[] }>("heldout_sets", { sessionId });
