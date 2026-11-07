@@ -4,7 +4,7 @@ import { emit } from "./events.ts";
 import { trace } from "./tracer.ts";
 import { evalExpr, predictionMatches, type ExprResult } from "./predicate.ts";
 import { createHypotheses, listHypotheses, updateHypothesis, validateEvidence, type Hypothesis, type Status } from "./hypotheses.ts";
-import { designExperiments, fmtHyp, theorize, type PlannedInput } from "./theorist.ts";
+import { designExperiments, fmtCall, fmtHyp, theorize, type Experiment, type PlannedInput } from "./theorist.ts";
 import { show, showOutcome } from "./tagged.ts";
 import type { Observation } from "./types.ts";
 
@@ -85,9 +85,29 @@ export async function runLoop(o: LoopOptions) {
     log(`round ${round}: experiment on ${targets.map((h) => h.hid).join(", ")}`);
     await emit(sessionId, "experiment_started", { round, hids: targets.map((h) => h.hid) });
 
-    let experiments: Awaited<ReturnType<typeof designExperiments>>;
+    let experiments: Experiment[] = [];
+    let tested = targets;
     try {
-      experiments = await designExperiments({ sessionId, round, targets, ledger: hyps });
+      const first = await designExperiments({ sessionId, round, targets, ledger: hyps });
+      experiments = first.valid;
+      if (first.invalid.length) {
+        // Guard: declared call != structured input. Don't run it, don't touch the rule, re-ask once.
+        log(`  ${first.invalid.length} invalid experiments (${first.invalid.map((x) => `${x.hid}: ${x.problems[0]}`).join("; ").slice(0, 200)}); re-asking once`);
+        await emit(sessionId, "experiment_invalid", { round, attempt: 1, invalid: first.invalid });
+        const retryTargets = targets.filter((h) => first.invalid.some((x) => x.hid === h.hid));
+        const feedback = `Your previous experiments for ${retryTargets.map((h) => h.hid).join(", ")} were rejected because "call" did not match "input":\n${first.invalid.map((x) => `- ${x.hid}: ${x.problems.slice(0, 3).join("; ")}`).join("\n")}\nMake each structured input encode exactly the declared call.`;
+        const second = await designExperiments({ sessionId, round, targets: retryTargets, ledger: hyps, feedback });
+        experiments.push(...second.valid);
+        if (second.invalid.length) {
+          await emit(sessionId, "experiment_invalid", { round, attempt: 2, invalid: second.invalid });
+          for (const x of second.invalid) {
+            const h = targets.find((t) => t.hid === x.hid)!;
+            await updateHypothesis(h, round, h.status, h.confidence, `experiment invalid (${x.problems[0]}), status unchanged`);
+          }
+          log(`  still invalid after re-ask: ${second.invalid.map((x) => x.hid).join(", ")} (status unchanged)`);
+        }
+      }
+      tested = targets.filter((h) => experiments.some((e) => e.hid === h.hid));
     } catch (e: any) {
       // Spec §10b: malformed after retry -> skip the step and log. Mark targets tested so the next round moves on.
       log(`  experiment design failed (${e?.message ?? e}); skipping round ${round}`);
@@ -96,20 +116,28 @@ export async function runLoop(o: LoopOptions) {
     }
     const planned: Planned[] = experiments.flatMap((e) => e.inputs.map((p) => ({ ...p, hid: e.hid })));
     // examples-kind predicates contribute their own examples as predictions on first test
-    for (const h of targets) {
+    for (const h of tested) {
       if (h.predicate.kind === "examples" && !h.testedRounds.length) {
         for (const ex of h.predicate.examples) planned.push({ hid: h.hid, input: ex.input, expected: ex.expected, disproving: false, why: "predicate example" });
       }
     }
     const newObs = planned.length ? await trace({ sessionId, round, source: "experiment", inputs: planned.map((p) => p.input) }) : [];
     log(`  ran ${newObs.length} experiment inputs`);
+    // Experiment records: the description is generated from what actually ran, never from the Theorist's text.
+    if (newObs.length) {
+      await (await getStore()).insertMany("experiments", planned.map((p, i) => ({
+        sessionId, round, hid: p.hid, runId: newObs[i].runId, description: fmtCall(newObs[i].input),
+        expected: p.expected, actual: newObs[i].outcome, matched: predictionMatches(p.expected, newObs[i].outcome),
+        disproving: p.disproving, declared: p.declared ?? null, rationale: p.why ?? null,
+      })));
+    }
     const obs = await allObs(sessionId);
     const newIds = new Set(newObs.map((x) => x.runId));
 
     let changes = 0;
     for (const h of hyps) {
       if (h.status === "disproven") continue;
-      const isTarget = targets.includes(h);
+      const isTarget = tested.includes(h);
       const mine = planned.map((p, i) => ({ p, ob: newObs[i] })).filter((x) => x.p.hid === h.hid);
       const match = mine.filter((x) => predictionMatches(x.p.expected, x.ob.outcome));
       const miss = mine.filter((x) => !predictionMatches(x.p.expected, x.ob.outcome));

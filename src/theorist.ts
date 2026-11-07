@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { call } from "./llm.ts";
 import { decode, show, showOutcome } from "./tagged.ts";
+import { checkDeclared } from "./declared.ts";
 import { CATEGORIES, type Draft, type Hypothesis } from "./hypotheses.ts";
 import type { Example } from "./predicate.ts";
 import { TAGS, type CallInput, type Observation, type TaggedValue } from "./types.ts";
@@ -30,7 +31,7 @@ const TheorizeOut = z.object({ hypotheses: z.array(LHypothesis).max(15) });
 const ExperimentOut = z.object({
   experiments: z.array(z.object({
     hid: z.string(),
-    inputs: z.array(z.object({ input: LInput, expected: LExpected, disproving: z.boolean(), why: z.string().optional() })).min(1).max(8),
+    inputs: z.array(z.object({ call: z.string(), input: LInput, expected: LExpected, disproving: z.boolean(), why: z.string().optional() })).min(1).max(8),
   })),
 });
 
@@ -62,17 +63,21 @@ function argShow(tv: TaggedValue): string {
   if (tv.t === "string" && tv.v.length > 60) return `${JSON.stringify(tv.v.slice(0, 24))}…(string of length ${tv.v.length})`;
   return show(tv);
 }
-export function fmtObs(o: Observation): string {
+/** Human-readable call, always generated from the input that was actually executed. */
+export function fmtCall(input: CallInput): string {
   const args: string[] = [];
-  if (o.input.val !== undefined) args.push(argShow(o.input.val));
-  if (o.input.options !== undefined || o.input.extra?.length) {
-    if (o.input.val === undefined) args.push("undefined");
-    args.push(o.input.options ? argShow(o.input.options) : "undefined");
+  if (input.val !== undefined) args.push(argShow(input.val));
+  if (input.options !== undefined || input.extra?.length) {
+    if (input.val === undefined) args.push("undefined");
+    args.push(input.options ? argShow(input.options) : "undefined");
   }
-  for (const e of o.input.extra ?? []) args.push(argShow(e));
+  for (const e of input.extra ?? []) args.push(argShow(e));
+  return `f(${args.join(", ")})`;
+}
+export function fmtObs(o: Observation): string {
   let out = showOutcome(o.outcome);
   if (out.length > 120) out = `${out.slice(0, 110)}…`;
-  return `${o.runId} f(${args.join(", ")}) => ${out}${o.nondeterministic ? " [NONDETERMINISTIC]" : ""}`;
+  return `${o.runId} ${fmtCall(o.input)} => ${out}${o.nondeterministic ? " [NONDETERMINISTIC]" : ""}`;
 }
 export function fmtHyp(h: Hypothesis): string {
   const last = h.history[h.history.length - 1];
@@ -143,10 +148,15 @@ export async function theorize(args: {
   return { drafts, contextChars: user.length + SYSTEM.length };
 }
 
-export type PlannedInput = { input: CallInput; expected: Example["expected"]; disproving: boolean; why?: string };
+export type PlannedInput = { input: CallInput; expected: Example["expected"]; disproving: boolean; why?: string; declared?: string };
 export type Experiment = { hid: string; inputs: PlannedInput[] };
+export type InvalidExperiment = { hid: string; problems: string[] };
 
-export async function designExperiments(args: { sessionId: string; round: number; targets: Hypothesis[]; ledger: Hypothesis[] }): Promise<Experiment[]> {
+/**
+ * Ask the Theorist for experiments. Every input carries a declared call `f(...)` that must match its structured
+ * input exactly (checked in a sandbox). An experiment with any mismatching input is returned as invalid, unrun.
+ */
+export async function designExperiments(args: { sessionId: string; round: number; targets: Hypothesis[]; ledger: Hypothesis[]; feedback?: string }): Promise<{ valid: Experiment[]; invalid: InvalidExperiment[] }> {
   const user = [
     `Round ${args.round}. Design experiments for these rules:`,
     args.targets.map((h) => `${fmtHyp(h)}\n  predicate: ${JSON.stringify(h.predicate).slice(0, 400)}`).join("\n"),
@@ -154,17 +164,26 @@ export async function designExperiments(args: { sessionId: string; round: number
     `For EACH rule give 3 to 8 NEW inputs with the outcome the rule predicts for each one.
 Keep strings short: for long strings ALWAYS use {"t":"string","v":"a","repeat":N}, never write them out.
 At least one input per rule must have "disproving": true: an input where, if the rule is wrong, the result would most likely show it (edges, boundaries, near-misses, odd types).
-Reply: {"experiments":[{"hid","inputs":[{"input","expected","disproving","why"}]}]}`,
-  ].join("\n\n");
+Each input needs "call": the exact JS call it makes, e.g. "f('1h', {long: true})" or "f(1, {}, 2, 3)" or "f('a'.repeat(101))".
+"call" and "input" are checked against each other mechanically; if they differ, the experiment is rejected unrun.
+Reply: {"experiments":[{"hid","inputs":[{"call","input","expected","disproving","why"}]}]}`,
+    args.feedback ?? "",
+  ].filter(Boolean).join("\n\n");
   const r = await call("theorist", { system: SYSTEM, user }, ExperimentOut, { sessionId: args.sessionId });
-  const valid = new Set(args.targets.map((h) => h.hid));
-  return r.data.experiments
-    .filter((e) => valid.has(e.hid))
-    .map((e) => ({
-      hid: e.hid,
-      inputs: e.inputs.flatMap((p) => {
-        const input = normInput(p.input);
-        return input ? [{ input, expected: normExpected(p.expected), disproving: p.disproving, why: p.why }] : [];
-      }),
-    }));
+  const wanted = new Set(args.targets.map((h) => h.hid));
+  const valid: Experiment[] = [], invalid: InvalidExperiment[] = [];
+  for (const e of r.data.experiments.filter((x) => wanted.has(x.hid))) {
+    const inputs: PlannedInput[] = [], problems: string[] = [];
+    for (const p of e.inputs) {
+      const input = normInput(p.input);
+      if (!input) { problems.push(`unusable structured input for ${p.call.slice(0, 50)}`); continue; }
+      const mismatch = checkDeclared(p.call, input);
+      if (mismatch) { problems.push(mismatch); continue; }
+      inputs.push({ input, expected: normExpected(p.expected), disproving: p.disproving, why: p.why, declared: p.call });
+    }
+    if (problems.length || !inputs.length) invalid.push({ hid: e.hid, problems: problems.length ? problems : ["no inputs"] });
+    else valid.push({ hid: e.hid, inputs });
+  }
+  for (const h of args.targets) if (!r.data.experiments.some((x) => x.hid === h.hid)) invalid.push({ hid: h.hid, problems: ["no experiment returned"] });
+  return { valid, invalid };
 }
