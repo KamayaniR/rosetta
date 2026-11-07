@@ -7,6 +7,8 @@ import { getStore } from "./store.ts";
 import { emit } from "./events.ts";
 import { expandSeeds, generateSeeds } from "./seeds.ts";
 import { trace, TARGET_PATH } from "./tracer.ts";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { experimentRound, safeHypothesize, withDefaults } from "./loop.ts";
 import { archivistStep } from "./archivist-step.ts";
 import { detectQuirks } from "./quirks.ts";
@@ -24,11 +26,22 @@ export const STEP_AGENT: Record<StepName, string> = {
 
 const log = (sessionId: string) => (s: string) => { console.log(`[${sessionId}] ${s}`); };
 
-export async function createSession(opts: { orchestrator: "node" | "fetch"; source?: { kind: "web" | "agentverse"; caller?: string; request?: string } }) {
+export const MAX_UPLOAD_BYTES = 200 * 1024;
+
+export async function createSession(opts: { orchestrator: "node" | "fetch"; source?: { kind: "web" | "agentverse"; caller?: string; request?: string }; code?: string }) {
   const store = await getStore();
   const sessionId = `s_${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")}_${randomBytes(2).toString("hex")}`;
-  await store.insertMany("sessions", [{ sessionId, target: TARGET_PATH, createdAt: new Date(), store: store.kind, orchestrator: opts.orchestrator, source: opts.source ?? { kind: "web" }, phase: "trace", done: false }]);
-  await emit(sessionId, "session_started", { target: TARGET_PATH, orchestrator: opts.orchestrator, source: opts.source ?? { kind: "web" } });
+  let target = TARGET_PATH;
+  if (opts.code) {
+    // uploaded module (e.g. pasted in ASI:One): size-capped, runs in the same sandbox as everything else
+    if (Buffer.byteLength(opts.code) > MAX_UPLOAD_BYTES) throw new Error(`code too large (max ${MAX_UPLOAD_BYTES / 1024} KB)`);
+    const dir = resolve(import.meta.dirname, "..", "target", "uploads");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(resolve(dir, `${sessionId}.js`), opts.code);
+    target = `target/uploads/${sessionId}.js`;
+  }
+  await store.insertMany("sessions", [{ sessionId, target, createdAt: new Date(), store: store.kind, orchestrator: opts.orchestrator, source: opts.source ?? { kind: "web" }, phase: "trace", done: false }]);
+  await emit(sessionId, "session_started", { target, orchestrator: opts.orchestrator, source: opts.source ?? { kind: "web" } });
   return sessionId;
 }
 

@@ -12,7 +12,7 @@ import { coverageOf } from "./evidence.ts";
 import { listHypotheses } from "./hypotheses.ts";
 import { listQuirks } from "./quirks.ts";
 import { fmtObs } from "./theorist.ts";
-import { TARGET_PATH } from "./tracer.ts";
+import { targetOf } from "./tracer.ts";
 import type { Observation } from "./types.ts";
 
 export type FeatureKind = "case_group" | "branch" | "return" | "throw" | "comparison" | "regex";
@@ -47,9 +47,9 @@ function containing(points: CovPoint[], start: number, end: number): CovPoint | 
 
 /** Job 1: mechanical bundle map + which features observations executed. */
 export async function mapBundle(sessionId: string, obs: Observation[]): Promise<Feature[]> {
-  const src = safeRead(TARGET_PATH);
-  const ins = instrument(src, "ms.min.js");
-  const idx = await coverageOf(ins, "ms.min.js", obs);
+  const src = safeRead(await targetOf(sessionId));
+  const ins = instrument(src, "target.js");
+  const idx = await coverageOf(ins, "target.js", obs);
   const hits = (p?: CovPoint) => (p ? idx.point.get(p.id) ?? [] : []);
   const feats: Omit<Feature, "fid">[] = [];
 
@@ -72,7 +72,7 @@ export async function mapBundle(sessionId: string, obs: Observation[]): Promise<
     if (kind) feats.push({ kind, snippet: s.slice(0, 80), start: p.start, end: p.end, exercisedBy: hits(p) });
   }
   // comparisons with constants and regex literals
-  const sf = ts.createSourceFile("ms.min.js", src, ts.ScriptTarget.ES2022, true, ts.ScriptKind.JS);
+  const sf = ts.createSourceFile("target.js", src, ts.ScriptTarget.ES2022, true, ts.ScriptKind.JS);
   const rel = [ts.SyntaxKind.GreaterThanToken, ts.SyntaxKind.GreaterThanEqualsToken, ts.SyntaxKind.LessThanToken, ts.SyntaxKind.LessThanEqualsToken];
   const visit = (n: ts.Node) => {
     if (ts.isBinaryExpression(n) && rel.includes(n.operatorToken.kind)) {
@@ -111,7 +111,7 @@ export async function review(sessionId: string, round: number, features: Feature
 
   const state = {
     task: "Rosetta reverse-engineers a minified JavaScript function f(val, options?) from black-box runs.",
-    bundle: safeRead(TARGET_PATH),
+    bundle: safeRead(await targetOf(sessionId)),
     codeFeatures: features.map((f) => ({ fid: f.fid, kind: f.kind, code: f.snippet, executedByRuns: f.exercisedBy.length })),
     ledger: hyps.map((h) => ({ hid: h.hid, status: h.status, confidence: h.confidence, category: h.category, claim: h.claim, evidence: h.evidence, history: h.history })),
     quirks: quirks.map((q) => ({ hid: q.hid, decision: q.decision, reason: q.reason })),

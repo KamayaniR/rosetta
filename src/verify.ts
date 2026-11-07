@@ -9,7 +9,7 @@ import { runBatch } from "./sandbox/runner.ts";
 import { safeRead } from "./safeRead.ts";
 import { compareOutcomes, encode, showOutcome, type Comparison } from "./tagged.ts";
 import { transpile } from "./portcheck.ts";
-import { trace, TARGET_PATH } from "./tracer.ts";
+import { trace, targetOf, TARGET_PATH } from "./tracer.ts";
 import { fmtCall } from "./theorist.ts";
 import type { CallInput, Outcome, TaggedValue } from "./types.ts";
 import type { Port } from "./builder.ts";
@@ -61,10 +61,10 @@ export function sampleInputs(seed: number, n: number): CallInput[] {
 // ---------- differential run ----------
 export type Diff = { input: CallInput; original: Outcome; port: Outcome; cmp: Comparison };
 
-export async function runBoth(portJs: string, inputs: CallInput[]) {
-  const original = safeRead(TARGET_PATH);
+export async function runBoth(portJs: string, inputs: CallInput[], targetPath: string = TARGET_PATH) {
+  const original = safeRead(targetPath);
   const [a, b] = await Promise.all([
-    runBatch(original, TARGET_PATH, inputs, { repeats: 1 }),
+    runBatch(original, targetPath, inputs, { repeats: 1 }),
     runBatch(portJs, "ms.port.js", inputs, { repeats: 1 }),
   ]);
   return inputs.map((input, i) => ({ input, original: a[i].outcome, port: b[i].outcome, cmp: compareOutcomes(a[i].outcome, b[i].outcome) }));
@@ -88,7 +88,7 @@ function smaller(tv: TaggedValue): TaggedValue[] {
   return [];
 }
 
-export async function shrink(portJs: string, d: Diff, maxSteps = 12): Promise<Diff> {
+export async function shrink(portJs: string, d: Diff, maxSteps = 12, targetPath: string = TARGET_PATH): Promise<Diff> {
   let best = d;
   for (let step = 0; step < maxSteps; step++) {
     const cands: CallInput[] = [
@@ -96,7 +96,7 @@ export async function shrink(portJs: string, d: Diff, maxSteps = 12): Promise<Di
       ...smaller(best.input.val ?? { t: "undefined" }).map((val) => ({ ...best.input, val })),
     ];
     if (!cands.length) break;
-    const res = await runBoth(portJs, cands);
+    const res = await runBoth(portJs, cands, targetPath);
     const next = res.find((r) => !r.cmp.equal && r.cmp.severity === best.cmp.severity);
     if (!next) break;
     best = next;
@@ -141,16 +141,17 @@ export async function verify(opts: { sessionId: string; fuzzSeed?: number; fuzzR
   const [port] = await store.find<Port>("ports", { sessionId, compileOk: true }, { sort: { version: -1 }, limit: 1 });
   if (!port) throw new Error("no compiling port for this session");
   const portJs = transpile(port.code);
+  const target = await targetOf(sessionId);
   const fuzzSeed = opts.fuzzSeed ?? Date.now() % 1_000_000;
 
   const fuzzIn = sampleInputs(fuzzSeed, opts.fuzzRuns ?? 2000);
-  const fuzz = await runBoth(portJs, fuzzIn);
+  const fuzz = await runBoth(portJs, fuzzIn, target);
   await emit(sessionId, "verify_progress", { phase: "fuzz", ...tally(fuzz) });
   log(`  fuzz (seed ${fuzzSeed}): ${tally(fuzz).equal}/${fuzz.length} equal, ${tally(fuzz).low} low-severity, ${tally(fuzz).high} mismatches`);
 
   const heldIn = await heldoutInputs(sessionId);
   const heldKeys = new Set(heldIn.map((i) => JSON.stringify(i)));
-  const held = await runBoth(portJs, heldIn);
+  const held = await runBoth(portJs, heldIn, target);
   const ht = tally(held);
   // strict subset: held-out inputs that never occur as an observation input (seeds, experiments, fuzz feedback)
   const obsKeys = new Set((await store.find<{ input: CallInput }>("observations", { sessionId })).map((o) => JSON.stringify(o.input)));
@@ -163,7 +164,7 @@ export async function verify(opts: { sessionId: string; fuzzSeed?: number; fuzzR
   const seenReason = new Set<string>();
   const toShrink = fuzz.filter((d) => !d.cmp.equal).filter((d) => { const k = `${d.cmp.severity}:${d.original.kind}:${d.port.kind}:${d.input.val?.t}`; if (seenReason.has(k)) return false; seenReason.add(k); return true; }).slice(0, 8);
   const shrunk: Diff[] = [];
-  for (const d of toShrink) shrunk.push(await shrink(portJs, d));
+  for (const d of toShrink) shrunk.push(await shrink(portJs, d, 12, target));
 
   const rows: VerifyReport["mismatches"] = [];
   const now = new Date();

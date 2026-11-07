@@ -11,7 +11,7 @@ import { listQuirks, type Quirk } from "./quirks.ts";
 import { compile, lookupLint, tagMap, transpile, type Diagnostic, type TagMap } from "./portcheck.ts";
 import { runBatch } from "./sandbox/runner.ts";
 import { compareOutcomes } from "./tagged.ts";
-import { TARGET_PATH } from "./tracer.ts";
+import { targetOf } from "./tracer.ts";
 import type { Observation } from "./types.ts";
 import { portLineEvidence, type EvidenceSummary, type LineEvidence } from "./evidence.ts";
 
@@ -80,7 +80,8 @@ export async function build(opts: { sessionId: string; maxRetries?: number; log?
   const log = opts.log ?? console.log;
   const maxRetries = opts.maxRetries ?? 3;
   const store = await getStore();
-  const minified = safeRead(TARGET_PATH);
+  const target = await targetOf(sessionId);
+  const minified = safeRead(target);
   const hyps = await listHypotheses(sessionId);
   const quirks = await listQuirks(sessionId);
   const obs = await store.find<Observation>("observations", { sessionId });
@@ -88,7 +89,7 @@ export async function build(opts: { sessionId: string; maxRetries?: number; log?
   const known = new Set(hyps.map((h) => h.hid));
 
   const baseUser = [
-    `Minified original (${TARGET_PATH}):\n\`\`\`js\n${minified}\n\`\`\``,
+    `Minified original (${target}):\n\`\`\`js\n${minified}\n\`\`\``,
     `Ledger: proven and inferred rules (implement these):\n${live.map(fmtRule).join("\n")}`,
     hyps.some((h) => h.status === "disproven")
       ? `Disproven claims (these are WRONG, do not implement them):\n${hyps.filter((h) => h.status === "disproven").map((h) => `${h.hid}: ${h.claim}`).join("\n")}`

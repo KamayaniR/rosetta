@@ -28,10 +28,12 @@ async function coordinatorUp(): Promise<boolean> {
   try { return (await fetch(`${COORDINATOR_URL}/health`, { signal: AbortSignal.timeout(5000) })).ok; } catch { return false; }
 }
 
-app.post<{ Body: { orchestrator?: "node" | "fetch"; rounds?: number; top?: number; source?: { kind: "web" | "agentverse"; caller?: string; request?: string } } }>("/sessions", async (req) => {
+app.post<{ Body: { orchestrator?: "node" | "fetch"; rounds?: number; top?: number; code?: string; source?: { kind: "web" | "agentverse"; caller?: string; request?: string } } }>("/sessions", async (req, reply) => {
   const want = req.body?.orchestrator ?? (process.env.ORCHESTRATOR as "node" | "fetch" | undefined) ?? "fetch";
   const orchestrator = want === "fetch" && (await coordinatorUp()) ? "fetch" : "node";
-  const sessionId = await createSession({ orchestrator, source: req.body?.source });
+  let sessionId: string;
+  try { sessionId = await createSession({ orchestrator, source: req.body?.source, code: req.body?.code }); }
+  catch (e: any) { return reply.code(400).send({ error: String(e?.message ?? e) }); }
   const rounds = req.body?.rounds ?? 6, top = req.body?.top ?? 8;
   if (orchestrator === "fetch") {
     const r = await fetch(`${COORDINATOR_URL}/start`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ session_id: sessionId, rounds, top }) });
@@ -78,6 +80,11 @@ app.get<{ Params: { id: string } }>("/sessions/:id/events", async (req, reply) =
 });
 
 app.get<{ Params: { id: string } }>("/sessions/:id/report", async (req) => buildReport(req.params.id));
+
+app.get<{ Params: { id: string } }>("/sessions/:id/port.ts", async (req, reply) => {
+  const [port] = await (await getStore()).find<any>("ports", { sessionId: req.params.id, compileOk: true }, { sort: { version: -1 }, limit: 1 });
+  return port ? reply.type("text/plain").send(port.code) : reply.code(404).send({ error: "no port yet" });
+});
 
 app.post<{ Params: { hid: string }; Body: { sessionId: string; decision: "preserve" | "fix" | "flag"; fixSpec?: string; via?: string } }>("/quirks/:hid/decision", async (req, reply) => {
   const { sessionId, decision, fixSpec, via } = req.body;

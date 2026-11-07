@@ -7,6 +7,16 @@ import type { CallInput, Observation, ObservationSource } from "./types.ts";
 
 export const TARGET_PATH = "target/ms.min.js";
 
+/** Per-session target (uploaded code lives in target/uploads/); defaults to the demo target. */
+const targetCache = new Map<string, string>();
+export async function targetOf(sessionId: string): Promise<string> {
+  if (targetCache.has(sessionId)) return targetCache.get(sessionId)!;
+  const [s] = await (await getStore()).find<{ target?: string }>("sessions", { sessionId });
+  const t = s?.target ?? TARGET_PATH;
+  targetCache.set(sessionId, t);
+  return t;
+}
+
 export async function trace(args: {
   sessionId: string;
   round: number;
@@ -15,7 +25,7 @@ export async function trace(args: {
   targetPath?: string;
   run?: RunOptions;
 }): Promise<Observation[]> {
-  const path = args.targetPath ?? TARGET_PATH;
+  const path = args.targetPath ?? (await targetOf(args.sessionId));
   const code = safeRead(path);
   const results = await runBatch(code, path, args.inputs, args.run);
   const store = await getStore();
