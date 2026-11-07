@@ -12,7 +12,8 @@
     "seed": "tsx scripts/seed.ts",
     "loop": "tsx scripts/loop.ts",
     "predicate-test": "tsx scripts/predicate-test.ts",
-    "declared-test": "tsx scripts/declared-test.ts"
+    "declared-test": "tsx scripts/declared-test.ts",
+    "build-port": "tsx scripts/build.ts"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +25,7 @@
     "dotenv": "^18.0.9",
     "mongodb": "^7.8.0",
     "openai": "^7.53.0",
+    "ts5": "npm:typescript@^5.9.2",
     "zod": "^4.6.7"
   },
   "devDependencies": {
