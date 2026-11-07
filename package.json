@@ -19,7 +19,8 @@
     "archivist": "tsx scripts/archivist.ts",
     "verify": "tsx scripts/verify.ts",
     "mutation-test": "tsx scripts/mutation-test.ts",
-    "e2e": "tsx scripts/e2e.ts"
+    "e2e": "tsx scripts/e2e.ts",
+    "provenance-test": "tsx scripts/provenance-test.ts"
   },
   "keywords": [],
   "author": "",
@@ -28,8 +29,11 @@
   "private": "true",
   "dependencies": {
     "@google/genai": "^3.0.0",
+    "@noble/curves": "^2.4.0",
+    "@scure/base": "^2.4.0",
     "dotenv": "^18.0.9",
     "fast-check": "^4.10.2",
+    "fastify": "^5.12.8",
     "mongodb": "^7.8.0",
     "openai": "^7.53.0",
     "ts5": "npm:typescript@^5.9.2",
