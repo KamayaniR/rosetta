@@ -54,6 +54,8 @@ class ArchivistRequest(StepRequest): pass
 class QuirkRequest(StepRequest): pass
 class BuildRequest(StepRequest): pass
 class VerifyRequest(StepRequest): pass
+class SecurityRequest(StepRequest): pass
+class ContractRequest(StepRequest): pass
 
 class StepResult(Model):
     session_id: str
@@ -71,6 +73,8 @@ class Findings(StepResult): pass
 class Quirks(StepResult): pass
 class PortReady(StepResult): pass
 class MismatchReport(StepResult): pass
+class SecurityFindings(StepResult): pass
+class ContractReady(StepResult): pass
 
 
 # ---------- agents ----------
@@ -109,7 +113,8 @@ WORKER_STEPS = {
     "theorist": [(HypothesizeRequest, "hypothesize", Hypotheses), (ExperimentRequest, "experiment", RoundDone)],
     "archivist": [(ArchivistRequest, "archivist", Findings)],
     "builder": [(BuildRequest, "build", PortReady)],
-    "skeptic": [(QuirkRequest, "quirks", Quirks), (VerifyRequest, "verify", MismatchReport)],
+    "skeptic": [(QuirkRequest, "quirks", Quirks), (VerifyRequest, "verify", MismatchReport),
+                (SecurityRequest, "security", SecurityFindings), (ContractRequest, "contract", ContractReady)],
 }
 handled: set[str] = set()
 
@@ -207,9 +212,13 @@ async def on_result(ctx: Context, sender: str, msg: StepResult):
             s["repaired"] = True
             await dispatch(ctx, s, "builder", BuildRequest, "repair port with shrunk counterexamples", feedback=fb)
         else:
-            await finish(ctx, s)
+            await dispatch(ctx, s, "skeptic", SecurityRequest, "security pass (ReDoS sweep, crashes, capabilities, unsafe acceptance)")
+    elif msg.step == "security":
+        await dispatch(ctx, s, "skeptic", ContractRequest, "generate behavioral contract")
+    elif msg.step == "contract":
+        await finish(ctx, s)
 
-for cls in (ObservationBatch, Hypotheses, RoundDone, Findings, Quirks, PortReady, MismatchReport):
+for cls in (ObservationBatch, Hypotheses, RoundDone, Findings, Quirks, PortReady, MismatchReport, SecurityFindings, ContractReady):
     coord.on_message(model=cls)(on_result)
 
 

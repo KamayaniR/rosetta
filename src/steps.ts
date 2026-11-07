@@ -16,12 +16,15 @@ import { build } from "./builder.ts";
 import { verify } from "./verify.ts";
 import { listHypotheses } from "./hypotheses.ts";
 import { buildReport } from "./report.ts";
+import { securityPass } from "./security.ts";
+import { buildContract, fixPredicate } from "./contract.ts";
+import { listQuirks } from "./quirks.ts";
 
-export type StepName = "seed" | "hypothesize" | "experiment" | "archivist" | "quirks" | "build" | "verify" | "done";
+export type StepName = "seed" | "hypothesize" | "experiment" | "archivist" | "quirks" | "build" | "verify" | "security" | "contract" | "apply" | "done";
 /** Which agent may perform each step (signature must come from this agent). */
 export const STEP_AGENT: Record<StepName, string> = {
   seed: "tracer", hypothesize: "theorist", experiment: "theorist", archivist: "archivist",
-  quirks: "skeptic", build: "builder", verify: "skeptic", done: "coordinator",
+  quirks: "skeptic", build: "builder", verify: "skeptic", security: "skeptic", contract: "skeptic", apply: "builder", done: "coordinator",
 };
 
 const log = (sessionId: string) => (s: string) => { console.log(`[${sessionId}] ${s}`); };
@@ -99,6 +102,31 @@ export async function runStep(step: StepName, a: Args): Promise<Record<string, u
           : null,
       };
     }
+    case "security": {
+      await setPhase(sessionId, "quirk_court");
+      const r = await securityPass(sessionId, L);
+      return { hids: r.findings, count: r.findings.length, sweeps: r.sweeps.map((s) => ({ flagged: s.flagged, reason: s.reason })) };
+    }
+    case "contract": {
+      await setPhase(sessionId, "contract");
+      const c = await buildContract(sessionId);
+      return { rules: c.rules.length, quirks: c.quirks.length, snapshot: c.snapshot.length };
+    }
+    case "apply": {
+      // Quirk Court decisions -> fix predicates -> rebuilt port -> verify (fixes = intentional divergences) -> contract
+      await setPhase(sessionId, "port");
+      const obsById = new Map((await (await getStore()).find<any>("observations", { sessionId })).map((o) => [o.runId, o]));
+      for (const q of (await listQuirks(sessionId)).filter((x) => x.decision === "fix")) {
+        const ex = q.examples.map((r) => obsById.get(r)).filter(Boolean).map((o: any) => ({ runId: o.runId, input: o.input, expected: o.outcome }));
+        await fixPredicate(sessionId, q, ex);
+      }
+      const p = await build({ sessionId, log: L });
+      await setPhase(sessionId, "verify");
+      const v = await verify({ sessionId, fuzzSeed: 44, log: L });
+      await setPhase(sessionId, "contract");
+      const c = await buildContract(sessionId);
+      return { portVersion: p.version, heldout: v.heldout.matchRate, divergences: v.fuzz.divergences, contract: { rules: c.rules.length, quirks: c.quirks.length } };
+    }
     case "done": {
       await setPhase(sessionId, "contract");
       const report = await buildReport(sessionId);
@@ -142,6 +170,8 @@ export async function runPipeline(sessionId: string, o: { rounds?: number; topN?
     await unsignedStep("build", { sessionId, feedback: v.repairFeedback });
     await unsignedStep("verify", { sessionId, repair: true });
   }
+  await unsignedStep("security", { sessionId });
+  await unsignedStep("contract", { sessionId });
   await unsignedStep("done", { sessionId });
   return (await listHypotheses(sessionId)).length;
 }

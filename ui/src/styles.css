@@ -75,3 +75,8 @@ button.primary { background: #1f6feb; border-color: #1f6feb; } button.on { backg
 .report div { margin: 3px 0; }
 .reveal { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } .reveal pre { background: var(--bg); padding: 8px; border-radius: 6px; max-height: 420px; overflow: auto; font-size: 11px; white-space: pre-wrap; } .reveal h4 { margin: 0 0 4px; font-size: 12px; }
 @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; height: auto; } .lower { grid-template-columns: 1fr; } .stats { grid-template-columns: repeat(2, 1fr); } .agents-body { grid-template-columns: 1fr; } .col.center .port { height: 520px; } }
+.applybar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.contract { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; } .contract a { color: var(--blue); } .contract h4 { margin: 10px 0 2px; font-size: 12px; }
+.contract textarea { width: 100%; height: 260px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; font-size: 11px; margin-top: 6px; }
+.results .good { color: var(--green); } .results .bad { color: var(--red); } .broken { margin: 6px 0; } .broken .mono { white-space: pre-wrap; color: var(--muted); }
+.conflict { color: var(--yellow); margin-top: 2px; }

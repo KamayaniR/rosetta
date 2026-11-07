@@ -25,7 +25,9 @@
     "ui:build": "cd ui && npx vite build",
     "ui:dev": "cd ui && npx vite",
     "security": "tsx scripts/security.ts",
-    "security-sanity": "tsx scripts/security-sanity.ts"
+    "security-sanity": "tsx scripts/security-sanity.ts",
+    "contract": "tsx scripts/contract.ts",
+    "apply": "tsx scripts/apply.ts"
   },
   "keywords": [],
   "author": "",
@@ -49,6 +51,7 @@
     "@types/node": "^26.6.6",
     "terser": "^5.51.2",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^3.2.4"
   }
 }

@@ -45,6 +45,16 @@ if (fuzzMiss.length) {
   v = await verify({ sessionId, fuzzSeed: 43 });
 }
 
+phase("security pass");
+const { securityPass } = await import("../src/security.ts");
+const sec = await securityPass(sessionId);
+console.log(`  ${sec.findings.length} security findings; ${sec.sweeps.map((s) => s.reason).join(" | ")}`);
+phase("contract");
+const { buildContract, runContract } = await import("../src/contract.ts");
+const contract = await buildContract(sessionId);
+const cr = await runContract(contract, port.code);
+console.log(`  contract: ${contract.rules.length} rule groups, ${contract.quirks.length} quirk tests, ${contract.snapshot.length} snapshot; port passes ${cr.passed}/${cr.passed + cr.failed}`);
+
 phase("report");
 const report = await buildReport(sessionId);
 await store.insertMany("reports", [report]);

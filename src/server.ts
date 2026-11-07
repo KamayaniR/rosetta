@@ -11,6 +11,12 @@ import { createSession, runPipeline, runStep, STEP_AGENT, type StepName } from "
 import { buildReport } from "./report.ts";
 import { listHypotheses } from "./hypotheses.ts";
 import { listQuirks } from "./quirks.ts";
+import { runContract, renderVitest, buildContract, type ContractDef } from "./contract.ts";
+
+async function latestContract(sessionId: string): Promise<ContractDef | null> {
+  const [c] = await (await getStore()).find<ContractDef>("contracts", { sessionId }, { sort: { createdAt: -1 }, limit: 1 });
+  return c ?? null;
+}
 
 const PORT = Number(process.env.PORT ?? 8787);
 const COORDINATOR_URL = process.env.COORDINATOR_URL ?? "http://127.0.0.1:8100";
@@ -101,6 +107,31 @@ app.post<{ Params: { hid: string }; Body: { sessionId: string; decision: "preser
   await (await getStore()).updateOne("quirks", { sessionId, hid: req.params.hid }, { decision, fixSpec: fixSpec ?? null, decidedAt: new Date(), decidedVia: via ?? "web" });
   await emit(sessionId, "quirk_decided", { hid: req.params.hid, decision, fixSpec, via: via ?? "web" });
   return { ok: true };
+});
+
+// Apply Quirk Court decisions: fix predicates -> rebuilt port -> verify -> contract (runs in the background)
+app.post<{ Params: { id: string } }>("/sessions/:id/apply-decisions", async (req) => {
+  const sessionId = req.params.id;
+  runStep("apply", { sessionId }).then(async (result) => {
+    await (await getStore()).insertMany("provenance", [{ sessionId, step: "apply", signerName: "builder", signer: null, verified: "unsigned-fallback", result, ts: new Date() }]);
+    await emit(sessionId, "decisions_applied", result);
+  }).catch((e) => emit(sessionId, "agent_error", { agent: "builder", step: "apply", error: String(e?.message ?? e) }));
+  return { ok: true };
+});
+
+app.get<{ Params: { id: string } }>("/sessions/:id/contract", async (req) => (await latestContract(req.params.id)) ?? buildContract(req.params.id));
+app.get<{ Params: { id: string } }>("/sessions/:id/contract.test.ts", async (req, reply) => {
+  const c = (await latestContract(req.params.id)) ?? (await buildContract(req.params.id));
+  return reply.type("text/plain").send(renderVitest(c));
+});
+// "Try an AI edit": run the contract against pasted code, inside the sandbox
+app.post<{ Params: { id: string }; Body: { code?: string } }>("/sessions/:id/contract/run", async (req, reply) => {
+  const code = req.body?.code;
+  if (!code || code.length > 200_000) return reply.code(400).send({ error: "code (<= 200 KB) required" });
+  const c = (await latestContract(req.params.id)) ?? (await buildContract(req.params.id));
+  const r = await runContract(c, code);
+  await emit(req.params.id, "contract_result", { passed: r.passed, failed: r.failed, broken: r.results.filter((x) => !x.pass).map((x) => x.hid ?? x.id) });
+  return r;
 });
 
 // Reveal: the ONLY code path that reads ground_truth/, and only after the session is done.

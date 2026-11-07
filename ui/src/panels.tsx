@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { call, getJSON, outcome, postJSON, type View } from "./timeline";
+import { useEffect, useMemo, useState } from "react";
+import { API as API_BASE, call, getJSON, outcome, postJSON, type View } from "./timeline";
 
 // ---------- Left: trace inspector ----------
 export function TracePanel({ view, evidence }: { view: View; evidence: Set<string> }) {
@@ -79,6 +79,7 @@ export function QuirkCourt({ view, sessionId, live, onDecided }: { view: View; s
   const [fixing, setFixing] = useState<string | null>(null);
   const [spec, setSpec] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
   if (!view.quirks.length) return null;
   const obs = new Map(view.observations.map((o) => [o.runId, o]));
   const decide = async (hid: string, decision: string, fixSpec?: string) => {
@@ -90,9 +91,15 @@ export function QuirkCourt({ view, sessionId, live, onDecided }: { view: View; s
     <div className="panel court">
       <div className="panel-h"><h3>Quirk Court</h3><span className="muted">pending = preserve</span></div>
       {err && <div className="error small">{err}</div>}
+      {live && view.quirks.some((q) => q.decision !== "pending") && (
+        <div className="applybar">
+          <span className="muted small">{view.quirks.filter((q) => q.decision !== "pending").length} decided · Fix = intentional divergence, asserted by the contract</span>
+          <button className="primary" disabled={applying} onClick={async () => { setApplying(true); try { await postJSON(`/sessions/${sessionId}/apply-decisions`, {}); } catch (e: any) { setErr(e.message); } finally { setTimeout(() => { setApplying(false); onDecided(); }, 1500); } }}>{applying ? "Rebuilding…" : "Apply decisions → rebuild port"}</button>
+        </div>
+      )}
       {view.quirks.map((q) => {
         const hyp = view.hypotheses.find((h) => h.hid === q.hid);
-        const security = hyp?.category === "security";
+        const security = hyp?.category === "security" || q.security;
         return (
           <div key={q.hid} className={`card quirk ${security ? "security" : ""}`}>
             <div className="card-h"><b>{q.hid}</b>{security && <span className="badge b-sec">Security</span>}<span className={`badge d-${q.decision}`}>{q.decision}</span></div>
@@ -214,7 +221,7 @@ export function Drawer({ view, sessionId }: { view: View; sessionId: string }) {
   return (
     <div className="panel drawer">
       <div className="tabs">
-        {["verify", "history", "report", "reveal"].map((t) => <button key={t} className={tab === t ? "on" : ""} disabled={t === "reveal" && !view.done} onClick={() => load(t)}>{t === "history" ? "port history" : t}</button>)}
+        {["verify", "history", "contract", "report", "reveal"].map((t) => <button key={t} className={tab === t ? "on" : ""} disabled={t === "reveal" && !view.done} onClick={() => load(t)}>{t === "history" ? "port history" : t}</button>)}
       </div>
       {err && <div className="error small">{err}</div>}
       {tab === "verify" && (v ? (
@@ -226,6 +233,14 @@ export function Drawer({ view, sessionId }: { view: View; sessionId: string }) {
             <b>Skeptic properties</b> {v.properties?.model ? <span className="muted">({v.properties.model})</span> : null}<br />
             {v.properties && "proposed" in v.properties ? `${v.properties.proposed} proposed · ${v.properties.holds} hold on both · ${v.properties.portFails} fail on port · ${v.properties.wrongProperty} wrong (fail on original, discarded)` : v.properties?.error ?? "not run"}
           </div>
+          {(v.fuzz.divergences?.total > 0 || v.heldout.divergences?.total > 0) && (
+            <div className="props"><b>Intentional divergences (Fix decisions)</b><br />
+              fuzz {v.fuzz.divergences.pass}/{v.fuzz.divergences.total} implement the fix · {v.fuzz.divergences.conflicts ?? 0} conflict with another decision · {v.fuzz.divergences.fail} fail · held-out {v.heldout.divergences?.pass ?? 0}/{v.heldout.divergences?.total ?? 0}
+              {Object.entries(v.fuzz.divergences.byHid ?? {}).map(([h, b]: any) => <div key={h} className="muted small">{h}: "{b.fixSpec}" · {b.total - b.fail - Object.values(b.conflictsWith ?? {}).reduce((x: number, y: any) => x + y, 0)}/{b.total} implement the fix
+                {Object.entries(b.conflictsWith ?? {}).map(([o, n]: any) => <div key={o} className="conflict">Conflict: {h} Fix vs {o} on {n} inputs. The port kept {o}; decide which wins in Quirk Court.</div>)}</div>)}
+            </div>
+          )}
+          <SecuritySummary sessionId={sessionId} />
           <div className="mismatches">
             {v.mismatches.length === 0 ? <div className="muted">No mismatches. Mutation test: planted bugs are caught and shrunk (npm run mutation-test).</div> :
               v.mismatches.map((m: any, i: number) => <div key={i} className="mono small">[{m.phase} {m.severity}] {m.call}: original {m.original} · port {m.port}</div>)}
@@ -241,6 +256,7 @@ export function Drawer({ view, sessionId }: { view: View; sessionId: string }) {
           })}</tbody>
         </table>
       )}
+      {tab === "contract" && <ContractTab sessionId={sessionId} port={view.port} />}
       {tab === "report" && report && (
         <div className="report">
           <div><b>Rules</b> {JSON.stringify(report.rules)} · <b>observations</b> {report.observations.total}</div>
@@ -265,4 +281,45 @@ export function Drawer({ view, sessionId }: { view: View; sessionId: string }) {
 function Meter({ label, n, d }: { label: string; n?: number; d?: number }) {
   const p = n !== undefined && d ? n / d : 0;
   return <div className="meter"><div className="ml">{label}</div><div className="mb"><div style={{ width: `${p * 100}%` }} /></div><div className="mv">{d ? `${n}/${d} · ${(p * 100).toFixed(1)}%` : "–"}</div></div>;
+}
+
+function SecuritySummary({ sessionId }: { sessionId: string }) {
+  const [r, setR] = useState<any>(null);
+  useEffect(() => { getJSON(`/sessions/${sessionId}/report`).then((x) => setR(x.security)).catch(() => {}); }, [sessionId]);
+  if (!r) return null;
+  return (
+    <div className="props"><b>Security pass (§7d)</b> · {r.findings.length} findings · crashes/hangs {r.crashesOrHangs} · dangerous capability uses {r.dangerousCapabilityUses}
+      {r.redos.map((x: any, i: number) => <div key={i} className="mono small">{x.flagged ? "FLAG" : "ok"} ReDoS sweep unit {JSON.stringify(x.unit)}: {x.points.map((p: any) => `${p[0]}:${p[2] === "timeout" ? "TIMEOUT" : p[1] + "ms"}`).join(" ")} → {x.reason}</div>)}
+    </div>
+  );
+}
+
+function ContractTab({ sessionId, port }: { sessionId: string; port: any }) {
+  const [c, setC] = useState<any>(null);
+  const [code, setCode] = useState<string>(port?.code ?? "");
+  const [res, setRes] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { getJSON(`/sessions/${sessionId}/contract`).then(setC).catch((e) => setErr(String(e))); }, [sessionId]);
+  const run = async () => { setBusy(true); setErr(null); try { setRes(await postJSON(`/sessions/${sessionId}/contract/run`, { code })); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
+  return (
+    <div className="contract">
+      <div>
+        {c && <div><b>Contract</b> for port v{c.portVersion}: {c.rules.length} proven-rule groups ({c.rules.reduce((n: number, r: any) => n + r.examples.length, 0)} examples, {c.rules.filter((r: any) => r.property).length} properties) · {c.quirks.length} Quirk Court tests ({c.quirks.map((q: any) => `${q.hid}=${q.decision}`).join(", ")}) · held-out snapshot {c.snapshot.length}</div>}
+        <a href={`${API_BASE}/sessions/${sessionId}/contract.test.ts`} target="_blank" rel="noreferrer">Download contract.test.ts (vitest + fast-check)</a>
+        <h4>Try an AI edit</h4>
+        <div className="muted small">Paste a modified port. The contract runs against it inside the sandbox and names every rule it breaks.</div>
+        <textarea className="mono" value={code} onChange={(e) => setCode(e.target.value)} spellCheck={false} />
+        <div className="actions"><button className="primary" disabled={busy || !code} onClick={run}>{busy ? "Running…" : "Run contract"}</button><button onClick={() => { setCode(port?.code ?? ""); setRes(null); }}>Reset to port</button></div>
+        {err && <div className="error small">{err}</div>}
+      </div>
+      <div className="results">
+        {res && <div className={res.failed ? "bad" : "good"}><b>{res.failed ? `BLOCKED: ${res.failed} contract tests fail` : `PASS: all ${res.passed} contract tests`}</b>{res.compileErrors?.length ? ` · ${res.compileErrors.length} TypeScript errors` : ""}</div>}
+        {res?.results.filter((t: any) => !t.pass).map((t: any) => (
+          <div key={t.id} className="broken"><span className="badge b-disproven">broken</span> {t.title}<div className="mono small">{t.failures.slice(0, 3).join("\n")}</div></div>
+        ))}
+        {res && res.failed === 0 && <div className="muted small">Every proven rule, every Quirk Court decision and the held-out snapshot still hold.</div>}
+      </div>
+    </div>
+  );
 }

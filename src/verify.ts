@@ -14,6 +14,49 @@ import { fmtCall } from "./theorist.ts";
 import type { CallInput, Outcome, TaggedValue } from "./types.ts";
 import type { Port } from "./builder.ts";
 import { propertyTests } from "./skeptic.ts";
+import { listQuirks } from "./quirks.ts";
+import { evalExpr } from "./predicate.ts";
+import type { Observation } from "./types.ts";
+
+type FixPred = { hid: string; fixSpec: string; kind?: "transform" | "expr"; applies: string; holds?: string; transform?: string };
+export type Divergence = { total: number; pass: number; fail: number; conflicts: number;
+  byHid: Record<string, { total: number; fail: number; fixSpec: string; conflictsWith: Record<string, number> }> };
+type KeepRule = { hid: string; decision: string; applies: string; holds: string };
+
+/** Split diffs into equivalence-checked ones and intentional divergences (inputs a Fix decision covers). */
+async function splitFixes(sessionId: string, ds: Diff[], fixes: FixPred[], keep: KeepRule[] = []): Promise<{ kept: Diff[]; div: Divergence }> {
+  const div: Divergence = { total: 0, pass: 0, fail: 0, conflicts: 0, byHid: {} };
+  if (!fixes.length) return { kept: ds, div };
+  const orig = ds.map((d, i) => ({ runId: `d${i}`, input: d.input, outcome: d.original } as unknown as Observation));
+  const port = ds.map((d, i) => ({ runId: `d${i}`, input: d.input, outcome: d.port } as unknown as Observation));
+  const covered = new Map<number, FixPred>();
+  for (const f of fixes) {
+    const a = evalExpr({ kind: "expr", applies: f.applies, holds: "true" }, orig); // applies is judged on the ORIGINAL behavior
+    for (const r of a.pass) if (!covered.has(Number(r.slice(1)))) covered.set(Number(r.slice(1)), f);
+  }
+  // transform fixes: expected = ORIGINAL run on transform(input)
+  const expected = new Map<number, Outcome | null>();
+  for (const f of fixes.filter((x) => x.kind === "transform")) {
+    const idxs = [...covered].filter(([, g]) => g === f).map(([i]) => i);
+    const { expectedUnderTransform } = await import("./contract.ts");
+    const outs = await expectedUnderTransform(sessionId, f.transform!, idxs.map((i) => ds[i].input));
+    idxs.forEach((i, k) => expected.set(i, outs[k]));
+  }
+  for (const [i, f] of covered) {
+    const ok = f.kind === "transform"
+      ? !!expected.get(i) && compareOutcomes(expected.get(i)!, ds[i].port).equal
+      : evalExpr({ kind: "expr", applies: "true", holds: f.holds! }, [port[i]]).pass.length === 1;
+    const b = (div.byHid[f.hid] ??= { total: 0, fail: 0, fixSpec: f.fixSpec, conflictsWith: {} });
+    div.total++; b.total++;
+    if (ok) { div.pass++; continue; }
+    // the port kept the original here: is that because another Quirk Court decision (Preserve/Flag/pending) covers it?
+    const other = keep.find((k) => k.hid !== f.hid && evalExpr({ kind: "expr", applies: k.applies, holds: "true" }, [orig[i]]).pass.length === 1
+      && compareOutcomes(ds[i].original, ds[i].port).equal);
+    if (other) { div.conflicts++; b.conflictsWith[other.hid] = (b.conflictsWith[other.hid] ?? 0) + 1; }
+    else { div.fail++; b.fail++; }
+  }
+  return { kept: ds.filter((_, i) => !covered.has(i)), div };
+}
 
 // ---------- arbitraries (§7 Step 6) ----------
 const UNITS = ["ms", "msec", "msecs", "millisecond", "milliseconds", "s", "sec", "secs", "second", "seconds", "m", "min", "mins",
@@ -119,9 +162,9 @@ async function heldoutInputs(sessionId: string): Promise<CallInput[]> {
 
 export type VerifyReport = {
   sessionId: string; portVersion: number; createdAt: Date;
-  fuzz: { seed: number; total: number; equal: number; low: number; high: number };
+  fuzz: { seed: number; total: number; equal: number; low: number; high: number; divergences?: Divergence };
   properties?: { model: string; proposed: number; holds: number; portFails: number; wrongProperty: number; invalidOrVacuous: number } | { error: string };
-  heldout: { seed: number; total: number; equal: number; low: number; high: number; matchRate: number;
+  heldout: { seed: number; total: number; equal: number; low: number; high: number; matchRate: number; divergences?: Divergence;
     // held-out inputs that appear in NO observation (the strict number); seenElsewhere = also observed via experiments/fuzz
     unseen: { total: number; equal: number; matchRate: number }; seenElsewhere: number };
   mismatches: { phase: "fuzz" | "heldout" | "property"; severity: string; call: string; original: string; port: string; reason?: string; shrunk: boolean }[];
@@ -148,14 +191,28 @@ export async function verify(opts: { sessionId: string; fuzzSeed?: number; fuzzR
 
   const fuzzIn = sampleInputs(fuzzSeed, opts.fuzzRuns ?? 2000);
   const rowsProps: VerifyReport["mismatches"] = [];
-  const fuzz = await runBoth(portJs, fuzzIn, target);
+  const allQuirks = await listQuirks(sessionId);
+  const fixes: FixPred[] = allQuirks.filter((q: any) => q.decision === "fix" && q.fixPredicate)
+    .map((q: any) => ({ hid: q.hid, fixSpec: q.fixSpec, ...q.fixPredicate }));
+  const { listHypotheses } = await import("./hypotheses.ts");
+  const hypsById = new Map((await listHypotheses(sessionId)).map((h) => [h.hid, h]));
+  const keep: KeepRule[] = allQuirks.filter((q) => q.decision !== "fix").flatMap((q) => {
+    const p = hypsById.get(q.hid)?.predicate;
+    return p?.kind === "expr" && p.applies !== "false" ? [{ hid: q.hid, decision: q.decision, applies: p.applies, holds: p.holds }] : [];
+  });
+  const fuzzAll = await runBoth(portJs, fuzzIn, target);
+  const { kept: fuzz, div: fuzzDiv } = await splitFixes(sessionId, fuzzAll, fixes, keep);
+  if (fixes.length) {
+    log(`  intentional divergences (Fix: ${fixes.map((f) => f.hid).join(", ")}): fuzz ${fuzzDiv.pass}/${fuzzDiv.total} implement the fix, ${fuzzDiv.conflicts} conflict with another decision, ${fuzzDiv.fail} fail`);
+    for (const [h, b] of Object.entries(fuzzDiv.byHid)) for (const [o, n] of Object.entries(b.conflictsWith)) log(`    CONFLICT: ${h} fix vs ${o} (${allQuirks.find((q) => q.hid === o)?.decision}) on ${n} inputs; the port kept ${o}. Decide which wins in Quirk Court.`);
+  }
   await emit(sessionId, "verify_progress", { phase: "fuzz", ...tally(fuzz) });
   log(`  fuzz (seed ${fuzzSeed}): ${tally(fuzz).equal}/${fuzz.length} equal, ${tally(fuzz).low} low-severity, ${tally(fuzz).high} mismatches`);
 
   // Skeptic property tests (Gemini) on the fuzz inputs; never blocks verification if the model call fails
   let properties: VerifyReport["properties"];
   try {
-    const pt = await propertyTests(sessionId, port.version, fuzzIn, fuzz.map((d) => d.original), fuzz.map((d) => d.port));
+    const pt = await propertyTests(sessionId, port.version, fuzz.map((d) => d.input), fuzz.map((d) => d.original), fuzz.map((d) => d.port));
     properties = pt.summary;
     log(`  properties (${pt.summary.model}): ${pt.summary.proposed} proposed, ${pt.summary.holds} hold on both, ${pt.summary.portFails} fail on port, ${pt.summary.wrongProperty} wrong (fail on original, discarded), ${pt.summary.invalidOrVacuous} invalid/vacuous`);
     for (const x of pt.results.filter((x) => x.status === "port_fails")) {
@@ -168,7 +225,8 @@ export async function verify(opts: { sessionId: string; fuzzSeed?: number; fuzzR
 
   const heldIn = await heldoutInputs(sessionId);
   const heldKeys = new Set(heldIn.map((i) => JSON.stringify(i)));
-  const held = await runBoth(portJs, heldIn, target);
+  const heldAll = await runBoth(portJs, heldIn, target);
+  const { kept: held, div: heldDiv } = await splitFixes(sessionId, heldAll, fixes, keep);
   const ht = tally(held);
   // strict subset: held-out inputs that never occur as an observation input (seeds, experiments, fuzz feedback)
   const obsKeys = new Set((await store.find<{ input: CallInput }>("observations", { sessionId })).map((o) => JSON.stringify(o.input)));
@@ -207,9 +265,9 @@ export async function verify(opts: { sessionId: string; fuzzSeed?: number; fuzzR
 
   const report: VerifyReport = {
     sessionId, portVersion: port.version, createdAt: now,
-    fuzz: { seed: fuzzSeed, ...tally(fuzz) },
+    fuzz: { seed: fuzzSeed, ...tally(fuzz), divergences: fuzzDiv },
     properties,
-    heldout: { seed: HELDOUT_SEED, ...ht, matchRate: ht.equal / ht.total, unseen, seenElsewhere: ht.total - unseen.total },
+    heldout: { seed: HELDOUT_SEED, ...ht, matchRate: ht.equal / ht.total, unseen, seenElsewhere: ht.total - unseen.total, divergences: heldDiv },
     mismatches: rows, feedbackRunIds, feedbackBlocked,
   };
   await store.insertMany("verify_reports", [report]);
