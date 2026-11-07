@@ -81,9 +81,10 @@ async def on_chat(ctx: Context, sender: str, msg: ChatMessage):
     seen_msgs.add(str(msg.msg_id))
     save_seen()
     t = " ".join(c.text for c in msg.content if isinstance(c, TextContent)).strip()
+    ctx.logger.info(f"received from {sender[:16]}…: {t[:300]!r}")
+    t = cards.strip_mentions(t)
     if not t:
         return
-    ctx.logger.info(f"received from {sender[:16]}…: {t[:300]!r}")
     st = chats.setdefault(sender, {"session": None, "last_quirk": None, "last_card": "quirk", "phase": None, "shown_quirks": set(), "done": False})
 
     # 1) pull: ASI:One shows replies to the user's own messages, so "status" answers with the latest cards

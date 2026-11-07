@@ -102,14 +102,21 @@ NUMBERED_QUIRK = {"1": "preserve", "2": "fix", "3": "flag"}
 NUMBERED_REPORT = {"1": "download_port", "2": "view_contract", "3": "open_session"}
 
 
+def strip_mentions(t: str) -> str:
+    """ASI:One prefixes messages with '@agent1…' mentions; remove them before parsing."""
+    return re.sub(r"^(\s*@\S+)+\s*", "", t).strip()
+
+
 def parse_tap(t: str, last_quirk: Optional[str] = None, last_card: str = "quirk") -> Optional[dict]:
-    s = t.strip()
-    try:
-        obj = json.loads(s)
-        if isinstance(obj, dict) and obj.get("action") in ACTIONS:
-            return obj
-    except Exception:
-        pass
+    s = strip_mentions(t)
+    # selection JSON (direct @mention taps), possibly embedded in surrounding text
+    if "{" in s and "}" in s:
+        try:
+            obj = json.loads(s[s.index("{"): s.rindex("}") + 1])
+            if isinstance(obj, dict) and obj.get("action") in ACTIONS:
+                return obj
+        except Exception:
+            pass
     low = s.lower()
     hid = (re.search(r"\bH\d+\b", s) or [None])[0] if re.search(r"\bH\d+\b", s) else last_quirk
     m = re.match(r"^\s*fix\s+(H\d+)\s*:\s*(.+)$", s, re.I)
