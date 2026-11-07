@@ -6,7 +6,8 @@
 import ts from "ts5";
 
 export type CovPoint = { id: number; kind: "stmt" | "branch"; line: number; start: number; end: number; snippet: string };
-export type CaseLabel = { switchId: number; value: string; line: number; start: number; end: number };
+/** group: consecutive fall-through labels that share one case body get the same group number. */
+export type CaseLabel = { switchId: number; value: string; group: number; line: number; start: number; end: number };
 export type Instrumented = { code: string; points: CovPoint[]; labels: CaseLabel[] };
 
 type Edit = { pos: number; suffix: boolean; depth: number; text: string };
@@ -61,11 +62,14 @@ export function instrument(src: string, fileName = "code.js"): Instrumented {
       const id = next++;
       pre(n.expression.getStart(sf), depth, `__sw(${id},`);
       post(n.expression.getEnd(), depth, ")");
+      let group = 0;
       for (const c of n.caseBlock.clauses) {
-        if (!ts.isCaseClause(c)) continue;
-        const e = c.expression;
-        const value = ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e) ? e.text : ts.isNumericLiteral(e) ? String(Number(e.text)) : null;
-        if (value !== null) labels.push({ switchId: id, value, line: lineOf(c.getStart(sf)), start: c.getStart(sf), end: e.getEnd() });
+        if (ts.isCaseClause(c)) {
+          const e = c.expression;
+          const value = ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e) ? e.text : ts.isNumericLiteral(e) ? String(Number(e.text)) : null;
+          if (value !== null) labels.push({ switchId: id, value, group, line: lineOf(c.getStart(sf)), start: c.getStart(sf), end: e.getEnd() });
+        }
+        if (c.statements.length) group++;
       }
     }
     ts.forEachChild(n, (c) => visit(c, depth + 1));

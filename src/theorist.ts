@@ -187,3 +187,34 @@ Reply: {"experiments":[{"hid","inputs":[{"call","input","expected","disproving",
   for (const h of args.targets) if (!r.data.experiments.some((x) => x.hid === h.hid)) invalid.push({ hid: h.hid, problems: ["no experiment returned"] });
   return { valid, invalid };
 }
+
+const FindingsOut = z.object({ hypotheses: z.array(LHypothesis.extend({ evidence: z.array(z.string()) })).max(15) });
+
+/** Archivist findings -> code-reading hypotheses (evidence may be empty; experiments prove or disprove them next). */
+export async function hypothesizeFromFindings(args: {
+  sessionId: string; round: number; hypotheses: Hypothesis[]; findings: { type: string; detail: string }[];
+}): Promise<Draft[]> {
+  const user = [
+    `Round ${args.round}. The Archivist (full-history reviewer) reports gaps the current rules never covered:`,
+    args.findings.map((f) => `- [${f.type}] ${f.detail}`).join("\n"),
+    `Current rules:\n${args.hypotheses.map(fmtHyp).join("\n")}`,
+    `Propose testable hypotheses about what f does in these areas (code snippets come from the minified original).
+These are code-reading claims: "evidence" may be [] or cite existing run IDs. Each must have a mechanical predicate.
+Group related gaps into one rule where natural (e.g. one rule per unit family). Do not restate existing rules.
+Reply: {"hypotheses":[{"claim","category","confidence","evidence":[],"predicate"}]}`,
+  ].join("\n\n");
+  const r = await call("theorist", { system: SYSTEM, user }, FindingsOut, { sessionId: args.sessionId });
+  const drafts: Draft[] = [];
+  for (const h of r.data.hypotheses) {
+    let predicate: Draft["predicate"];
+    if (h.predicate.kind === "expr") predicate = h.predicate;
+    else {
+      const examples: Example[] = [];
+      for (const ex of h.predicate.examples) { const input = normInput(ex.input); if (input) examples.push({ input, expected: normExpected(ex.expected) }); }
+      if (!examples.length) continue;
+      predicate = { kind: "examples", examples };
+    }
+    drafts.push({ claim: h.claim, category: h.category, confidence: Math.min(0.6, h.confidence), evidence: h.evidence, predicate });
+  }
+  return drafts;
+}

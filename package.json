@@ -15,7 +15,8 @@
     "declared-test": "tsx scripts/declared-test.ts",
     "build-port": "tsx scripts/build.ts",
     "evidence": "tsx scripts/evidence.ts",
-    "coverage-test": "tsx scripts/coverage-test.ts"
+    "coverage-test": "tsx scripts/coverage-test.ts",
+    "archivist": "tsx scripts/archivist.ts"
   },
   "keywords": [],
   "author": "",

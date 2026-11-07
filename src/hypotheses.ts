@@ -26,6 +26,7 @@ export type Hypothesis = {
   source: "theorist" | "archivist";
   createdRound: number;
   testedRounds: number[];
+  challenge?: { by: string; reason: string; round: number } | null; // queued re-test (e.g. Archivist: thin evidence)
 };
 
 export type Draft = Pick<Hypothesis, "claim" | "category" | "confidence" | "evidence" | "predicate"> & { revises?: string };
@@ -117,4 +118,10 @@ export async function updateHypothesis(h: Hypothesis, round: number, status: Sta
   Object.assign(h, { status, confidence, evidence });
   h.history.push(entry);
   await emit(h.sessionId, "hypothesis_updated", { hid: h.hid, status, confidence, note, round });
+}
+
+export async function setChallenge(h: Hypothesis, challenge: Hypothesis["challenge"]) {
+  await (await getStore()).updateOne("hypotheses", { sessionId: h.sessionId, hid: h.hid }, { challenge });
+  h.challenge = challenge;
+  if (challenge) await emit(h.sessionId, "challenge_queued", { hid: h.hid, ...challenge });
 }

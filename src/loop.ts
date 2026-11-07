@@ -3,12 +3,17 @@ import { getStore } from "./store.ts";
 import { emit } from "./events.ts";
 import { trace } from "./tracer.ts";
 import { evalExpr, predictionMatches, type ExprResult } from "./predicate.ts";
-import { createHypotheses, listHypotheses, updateHypothesis, validateEvidence, type Hypothesis, type Status } from "./hypotheses.ts";
+import { createHypotheses, listHypotheses, setChallenge, updateHypothesis, validateEvidence, type Hypothesis, type Status } from "./hypotheses.ts";
+import { archivistStep } from "./archivist-step.ts";
 import { designExperiments, fmtCall, fmtHyp, theorize, type Experiment, type PlannedInput } from "./theorist.ts";
 import { show, showOutcome } from "./tagged.ts";
 import type { Observation } from "./types.ts";
 
-export type LoopOptions = { sessionId: string; roundCap?: number; topN?: number; maxObsInPrompt?: number; log?: (s: string) => void };
+export type LoopOptions = {
+  sessionId: string; roundCap?: number; topN?: number; maxObsInPrompt?: number; log?: (s: string) => void;
+  startRound?: number;  // continue numbering in an existing session
+  archivist?: boolean;  // run the Archivist full-history review after every round
+};
 
 const MIN_CONF = 0.3, MAX_CONF = 0.85;
 
@@ -60,16 +65,17 @@ async function safeHypothesize(opts: Required<LoopOptions>, round: number) {
 
 function selectTargets(hyps: Hypothesis[], n: number) {
   const band = (h: Hypothesis) => (h.confidence >= MIN_CONF && h.confidence <= MAX_CONF ? 0 : h.confidence > MAX_CONF ? 1 : 2);
-  return hyps
+  const challenged = hyps.filter((h) => h.status === "proven" && h.challenge);
+  return [...challenged, ...hyps
     .filter((h) => h.status === "inferred")
-    .sort((a, b) => a.testedRounds.length - b.testedRounds.length || band(a) - band(b) || b.confidence - a.confidence)
+    .sort((a, b) => a.testedRounds.length - b.testedRounds.length || band(a) - band(b) || b.confidence - a.confidence)]
     .slice(0, n);
 }
 
 type Planned = PlannedInput & { hid: string };
 
 export async function runLoop(o: LoopOptions) {
-  const opts: Required<LoopOptions> = { roundCap: 4, topN: 5, maxObsInPrompt: 300, log: console.log, ...o };
+  const opts: Required<LoopOptions> = { roundCap: 4, topN: 5, maxObsInPrompt: 300, log: console.log, startRound: 1, archivist: false, ...o };
   const { sessionId, log } = opts;
   let stable = 0;
 
@@ -78,10 +84,15 @@ export async function runLoop(o: LoopOptions) {
     await safeHypothesize(opts, 1);
   }
 
-  for (let round = 1; round <= opts.roundCap; round++) {
+  const first = opts.startRound, last = opts.startRound + opts.roundCap - 1;
+  for (let round = first; round <= last; round++) {
     const hyps = await listHypotheses(sessionId);
     const targets = selectTargets(hyps, opts.topN);
-    if (!targets.length) { log(`round ${round}: nothing left to test`); break; }
+    if (!targets.length) {
+      log(`round ${round}: nothing left to test`);
+      if (opts.archivist && round < last && (await archivistStep(sessionId, round, log)) > 0) continue;
+      break;
+    }
     log(`round ${round}: experiment on ${targets.map((h) => h.hid).join(", ")}`);
     await emit(sessionId, "experiment_started", { round, hids: targets.map((h) => h.hid) });
 
@@ -165,6 +176,10 @@ export async function runLoop(o: LoopOptions) {
         status = "disproven"; conf = 0.05;
         const ex = miss[0] ? `${miss[0].ob.runId} predicted ${miss[0].p.expected.kind}${miss[0].p.expected.value ? ` ${show(miss[0].p.expected.value)}` : ""}, got ${showOutcome(miss[0].ob.outcome).slice(0, 60)}` : "";
         note = [ex, exprFails.length ? `expr fails on ${exprFails.slice(0, 5).join(", ")}` : ""].filter(Boolean).join("; ");
+      } else if (h.status === "proven") {
+        // a challenged proven rule that survived its re-test stays proven
+        status = "proven"; conf = Math.max(h.confidence, 0.95);
+        note = `challenged (${h.challenge?.reason ?? "re-test"}), held: ${match.length} predictions`;
       } else if (match.length >= 3 && hadDisproving) {
         status = "proven"; conf = Math.min(0.99, 0.95 + 0.005 * match.length);
         note = `${match.length} predictions held incl. disproving attempts${expr ? `; expr holds on ${expr.applicable} runs` : ""}`;
@@ -176,11 +191,14 @@ export async function runLoop(o: LoopOptions) {
       const support = [...match.map((x) => x.ob.runId), ...(expr?.pass.filter((r) => newIds.has(r)) ?? [])];
       if (status !== h.status) changes++;
       await updateHypothesis(h, round, status, conf, note, status === "disproven" ? [] : support);
+      if (h.challenge) await setChallenge(h, null);
     }
     log(`  ${changes} status changes`);
-    stable = changes === 0 ? stable + 1 : 0;
+    let archivistAdded = 0;
+    if (opts.archivist) archivistAdded = await archivistStep(sessionId, round, log);
+    stable = changes === 0 && archivistAdded === 0 ? stable + 1 : 0;
     if (stable >= 2) { log("  stable for 2 rounds, stopping"); break; }
-    if (round < opts.roundCap) {
+    if (round < last) {
       log(`round ${round + 1}: hypothesize (revisions + unexplained)`);
       await safeHypothesize(opts, round + 1);
     }

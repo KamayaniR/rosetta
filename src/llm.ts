@@ -23,8 +23,11 @@ export const ROUTES: Record<Agent, Provider> = {
 export const MODELS: Record<Provider, string> = {
   meta: process.env.META_MODEL ?? "muse-spark-1.1",
   gemini: process.env.GEMINI_MODEL ?? "gemini-3.8-flash",
+  // subq-snap-* = Decisions API (/v1/systemone). Set SUBQ_MODEL=subq-preview once access is granted (generative).
   subq: process.env.SUBQ_MODEL ?? "subq-snap-1.1",
 };
+const SUBQ_BASE = "https://api.subq.ai/v1";
+export const isDecisionModel = (p: Provider) => p === "subq" && /snap/.test(MODELS.subq);
 
 const META_CALL_CAP = Number(process.env.META_CALL_CAP ?? 150);
 const MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS ?? 16384);
@@ -36,6 +39,7 @@ const metaCalls = new Map<string, number>();
 
 let meta: OpenAI | undefined;
 let gemini: GoogleGenAI | undefined;
+let subq: OpenAI | undefined;
 
 type Raw = { text: string; inputTokens: number; outputTokens: number };
 
@@ -70,7 +74,14 @@ async function callProvider(p: Provider, system: string, user: string, temperatu
       outputTokens: r.usageMetadata?.candidatesTokenCount ?? 0,
     };
   }
-  throw new Error("subq provider not wired yet");
+  // subq generative models (e.g. subq-preview) are OpenAI-compatible chat completions
+  if (isDecisionModel("subq")) throw new Error(`${MODELS.subq} is a decisions model; use decide()`);
+  subq ??= new OpenAI({ apiKey: process.env.SUBQ_API_KEY, baseURL: SUBQ_BASE, timeout: CALL_TIMEOUT_MS, maxRetries: 0 });
+  const r = await subq.chat.completions.create({
+    model: MODELS.subq, temperature, max_tokens: MAX_TOKENS,
+    messages: [{ role: "system", content: system }, { role: "user", content: user }],
+  });
+  return { text: r.choices[0]?.message?.content ?? "", inputTokens: r.usage?.prompt_tokens ?? 0, outputTokens: r.usage?.completion_tokens ?? 0 };
 }
 
 export function extractJson(text: string): unknown {
@@ -152,4 +163,77 @@ export async function call<T>(
   }
   await emit(ctx.sessionId, "agent_error", { agent, provider, error: "invalid output after repair retry" });
   throw new Error(`${agent}: invalid output after repair retry`);
+}
+
+// ---------- structured decisions (SubQ Snap /v1/systemone shape) ----------
+export type Question =
+  | { type: "noul"; instructions: string; criteria?: { true?: string; false?: string } }
+  | { type: "choice"; instructions: string; criteria: Record<string, string | null> }
+  | { type: "score"; instructions: string; criteria: string[] };
+export type Answer =
+  | { type: "noul"; noul: number }
+  | { type: "choice"; choice: string; probabilities: Record<string, number>; confidence: number }
+  | { type: "score"; score: number; probabilities: Record<string, number>; confidence: number };
+export type DecideResult = { answers: Record<string, Answer>; provider: Provider; model: string; inputTokens: number; latencyMs: number; calls: number };
+
+const SNAP_MAX_QUESTIONS = 128;
+
+async function snap(state: unknown, questions: Record<string, Question>): Promise<{ answers: Record<string, Answer>; inputTokens: number }> {
+  let lastErr: unknown;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const res = await fetch(`${SUBQ_BASE}/systemone`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${process.env.SUBQ_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: MODELS.subq, state, questions }),
+        signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+      });
+      const body: any = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = new Error(`subq ${res.status}: ${JSON.stringify(body).slice(0, 300)}`);
+        if (res.status === 400 || res.status === 403) throw Object.assign(err, { fatal: true });
+        throw err;
+      }
+      return { answers: body.answers ?? {}, inputTokens: body.usage?.input_tokens ?? 0 };
+    } catch (e: any) {
+      lastErr = e;
+      if (e?.fatal) throw e;
+      if (i < 2) await sleep(500 * 2 ** i);
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * Ask many typed questions about one shared state. Uses SubQ Snap's Decisions API when the agent routes to a
+ * snap model; otherwise emulates the same answer shape with a JSON-mode text model (so ROUTES can be switched).
+ */
+export async function decide(agent: Agent, state: unknown, questions: Record<string, Question>, ctx: { sessionId: string }): Promise<DecideResult> {
+  const provider = ROUTES[agent];
+  const t0 = Date.now();
+  const names = Object.keys(questions);
+  const answers: Record<string, Answer> = {};
+  let inputTokens = 0, calls = 0;
+  if (isDecisionModel(provider)) {
+    for (let i = 0; i < names.length; i += SNAP_MAX_QUESTIONS) {
+      const chunk = Object.fromEntries(names.slice(i, i + SNAP_MAX_QUESTIONS).map((n) => [n, questions[n]]));
+      const r = await snap(state, chunk);
+      Object.assign(answers, r.answers);
+      inputTokens += r.inputTokens;
+      calls++;
+    }
+  } else {
+    const { z } = await import("zod");
+    const schema = z.object({ answers: z.record(z.string(), z.any()) });
+    const r = await call(agent, {
+      system: "Answer every question about the given state. Reply JSON only.",
+      user: `State:\n${JSON.stringify(state)}\n\nQuestions:\n${JSON.stringify(questions)}\n\nReply {"answers": {<name>: noul -> {"type":"noul","noul":p}, choice -> {"type":"choice","choice":<option>,"probabilities":{..},"confidence":p}, score -> {"type":"score","score":<0-based level>,"probabilities":{..},"confidence":p}}}`,
+    }, schema, { sessionId: ctx.sessionId });
+    Object.assign(answers, r.data.answers);
+    inputTokens = r.inputTokens;
+    calls = 1;
+  }
+  const latencyMs = Date.now() - t0;
+  await emit(ctx.sessionId, "llm_call", { agent, provider, model: MODELS[provider], inputTokens, outputTokens: 0, latencyMs, attempt: 0, decisions: names.length, calls });
+  return { answers, provider, model: MODELS[provider], inputTokens, latencyMs, calls };
 }
