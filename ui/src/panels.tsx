@@ -44,8 +44,15 @@ export function TracePanel({ view, evidence }: { view: View; evidence: Set<strin
 // ---------- Right: hypotheses ----------
 const badge = (s: string) => <span className={`badge b-${s}`}>{s}</span>;
 
-export function HypothesesPanel({ view, selected, onSelect }: { view: View; selected: string[]; onSelect: (h: string[]) => void }) {
+export function HypothesesPanel({ view, selected, onSelect, sessionId, live }: { view: View; selected: string[]; onSelect: (h: string[]) => void; sessionId?: string; live?: boolean }) {
   const [filter, setFilter] = useState("all");
+  const [challenging, setChallenging] = useState<Record<string, string>>({});
+  // a challenge is "running" from challenge_started until challenge_done for that rule
+  const running = new Set(view.challenges.filter((c) => c.state === "running").map((c) => c.hid));
+  const challenge = async (hid: string) => {
+    setChallenging((m) => ({ ...m, [hid]: "starting" }));
+    try { await postJSON(`/hypotheses/${hid}/challenge`, { sessionId }); } catch (e: any) { setChallenging((m) => ({ ...m, [hid]: e.message })); }
+  };
   const counts = view.hypotheses.reduce((m: any, h) => ((m[h.status] = (m[h.status] ?? 0) + 1), m), {});
   const list = view.hypotheses.filter((h) => filter === "all" || h.status === filter || (filter === "archivist" && h.source === "archivist"));
   return (
@@ -66,6 +73,15 @@ export function HypothesesPanel({ view, selected, onSelect }: { view: View; sele
               {h.signerName ? <span className={`sig ${h.verified === true ? "ok" : "bad"}`}>signed by {h.signerName} {h.verified === true ? "✓" : "✗"}</span> : <span className="sig gray">unsigned</span>}
             </div>
             {h.status === "disproven" && <div className="note">{h.history[h.history.length - 1]?.note}</div>}
+            {(() => { const d = view.challenges.filter((c) => c.hid === h.hid && c.state === "done").pop(); return d ? <div className={`note ${d.after === "disproven" ? "bad" : "good"}`}>Challenge (round {d.round}): {d.before} → {d.after}, {d.ran} new runs{d.note ? ` · ${d.note}` : ""}</div> : null; })()}
+            {live && sessionId && h.status !== "disproven" && (
+              <div className="actions" onClick={(e) => e.stopPropagation()}>
+                <button disabled={running.has(h.hid) || challenging[h.hid] === "starting"} onClick={() => challenge(h.hid)}>
+                  {running.has(h.hid) ? "Challenging… (new experiment round)" : "Challenge"}
+                </button>
+                {challenging[h.hid] && challenging[h.hid] !== "starting" && <span className="muted small">{challenging[h.hid]}</span>}
+              </div>
+            )}
           </div>
         ))}
       </div>

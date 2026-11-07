@@ -98,5 +98,10 @@ export function snapshotAt(state: any, events: Ev[], T: number) {
     review: reviews[reviews.length - 1] ?? null,
     llm,
     errors: evs.filter((e) => e.type === "agent_error" || e.type === "provider_switched"),
+    challenges: evs.filter((e) => e.type === "challenge_started" || e.type === "challenge_done").map((e) =>
+      e.type === "challenge_started" && !evs.some((x) => x.type === "challenge_done" && x.payload.hid === e.payload.hid && ts(x.ts) >= ts(e.ts))
+        ? { hid: e.payload.hid, round: e.payload.round, state: "running" as const, before: "", after: "", ran: 0, note: "" }
+        : { hid: e.payload.hid, round: e.payload.round, state: (e.type === "challenge_done" ? "done" : "superseded") as "done" | "superseded", before: e.payload.before, after: e.payload.after, ran: e.payload.ran, note: e.payload.note }),
+    stopped: evs.some((e) => e.type === "session_stopped"),
   };
 }

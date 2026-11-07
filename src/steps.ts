@@ -58,6 +58,9 @@ type Args = { sessionId: string; round?: number; topN?: number; feedback?: strin
 /** Run one step. Returns a small JSON result (IDs and counts). */
 export async function runStep(step: StepName, a: Args): Promise<Record<string, unknown>> {
   const { sessionId } = a;
+  // Stop button: a stopped session refuses further steps (agents and the Node orchestrator both end there)
+  const [sess] = await (await getStore()).find<any>("sessions", { sessionId });
+  if (sess?.stopped) throw new Error("session stopped");
   const L = log(sessionId);
   const opts = withDefaults({ sessionId, topN: a.topN ?? 8, archivist: false, log: L });
   switch (step) {
@@ -155,7 +158,9 @@ export async function runPipeline(sessionId: string, o: { rounds?: number; topN?
   await unsignedStep("seed", { sessionId });
   await unsignedStep("hypothesize", { sessionId, round: 1 });
   let stable = 0;
+  const stopped = async () => !!(await (await getStore()).find<any>("sessions", { sessionId }))[0]?.stopped;
   for (let round = 1; round <= rounds; round++) {
+    if (await stopped()) return 0;
     const r = (await unsignedStep("experiment", { sessionId, round, topN })) as { changes: number; empty?: boolean; skipped?: boolean };
     const added = ((await unsignedStep("archivist", { sessionId, round })) as { added: number }).added;
     if (r.empty && !added) break;

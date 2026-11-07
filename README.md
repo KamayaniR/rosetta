@@ -83,6 +83,10 @@ Two real sessions from today, read straight from the stored reports:
 ![Quirk Court](docs/screenshots/02-quirk-court.png)
 Each quirk card shows the rule, why it is surprising, real example runs and a suggested fix, with **Preserve / Fix / Flag**. A **Fix** takes one line of intended behavior; the Skeptic turns it into an exact, testable predicate; **Apply decisions** rebuilds the port, re-verifies and regenerates the contract. Pending means Preserve.
 
+### 2b. Challenge a rule, live
+![Challenge](docs/screenshots/13-challenge.png)
+Every rule card has a **Challenge** button (live mode). It runs one targeted experiment round on just that rule. Here, challenging **H49** ("long format uses a 1.5× plural threshold for hours"): Muse Spark designed 7 new inputs right at the boundary (`f(5399999, {long:true})` → `"1 hour"`, `f(5400000)` → `"2 hours"`, `f(5400001)` → `"2 hours"`, runs R0471–R0477 at the top of Trace), and the rule **held** ("challenged, held: 7 predictions"). A rule that breaks under a challenge is disproven, with the counterexample. **Stop session** in the top bar stops a running session in either orchestrator: running steps finish, and no new step starts.
+
 ### 3. Verify: equivalence, held-out, properties, divergences, conflicts, security
 ![Verify](docs/screenshots/03-verify.png)
 - **Fuzz:** 2,000 generated inputs run on the original and the port.
@@ -219,7 +223,9 @@ agents/.venv/bin/python agents/service.py    # public `rosetta` agent on Agentve
 - **ASI:One:** message `@agent1q0j9cd9fn0krw3q87h4djuhgpy49nglx2ltwkpz43l2vuwqy0xnxc7q65f5 demo` (or paste a JS module). Then `status` for a progress card, `quirks` for the Quirk Court cards, and type `fix H3: <intended behavior>` or use the Fix form.
 - **CLI:** `npm run e2e` runs the whole pipeline in a fresh session (~12 min) and writes `out/ms.port.ts`, `out/contract.test.ts` and `out/report.json`. Then run `npx vitest run out/contract.test.ts`.
 
-**Checks:** `npm run guard` · `npm run sandbox-test` · `npm run predicate-test` · `npm run declared-test` · `npm run provenance-test` · `npm run mutation-test -- --session <id>` · `npm run security-sanity` · `npm run typecheck`.
+**Checks:** `npm run guard` · `npm run sandbox-test` · `npm run predicate-test` · `npm run declared-test` · `npm run provenance-test` · `npm run mutation-test -- --session <id> [--version N]` · `npm run security-sanity` · `npm run contract-test` · `npm run typecheck`.
+
+**API extras:** `POST /hypotheses/:hid/challenge {sessionId}` (one targeted experiment round) · `POST /sessions/:id/stop`.
 
 ## Repo map
 
@@ -253,7 +259,7 @@ docs/screenshots/ the images in this README
 - **SubQ:** our key only allows the Snap Decisions model, so the Archivist maps the bundle mechanically and uses SubQ to judge it, rather than generating text.
 - **ASI:One** shows the agent's replies to your own messages, not messages the agent pushes on its own (Agentverse accepted the pushes, but ASI:One never displayed them), so the chat flow is pull-based (`status`, `quirks`). Agentverse can re-deliver a message, so Rosetta handles each message ID once and allows one running session per chat. This was learned the hard way: 15 duplicate sessions, all stopped.
 - **Not deployed:** the demo runs from a laptop (Cloud Run was cut per the plan's cut order), so the "Live view" link in chat is local.
-- **Not built:** the Challenge button and pause/resume endpoints, the Archivist A/B run and large-bundle scale demo, and deciding experiments for conflicting rules.
+- **Not built:** resume after Stop, the Archivist A/B run and large-bundle scale demo, and deciding experiments for conflicting rules.
 
 <a name="disclosure"></a>
 ## Disclosure: what was built today

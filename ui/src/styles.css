@@ -98,3 +98,5 @@ button.primary { background: #1f6feb; border-color: #1f6feb; } button.on { backg
 .drawer .tabs button { border: 0; background: transparent; } .drawer .tabs button.on { background: #1f6feb33; }
 .agents-body { min-height: 0; }
 @media (max-width: 1100px) { .summary { grid-template-columns: repeat(2, 1fr); } }
+button.danger { border-color: #f8514966; color: var(--red); } button.danger:hover { background: #f851491a; }
+.note.good { color: var(--green); } .note.bad { color: var(--red); }

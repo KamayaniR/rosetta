@@ -141,6 +141,36 @@ app.post<{ Params: { id: string }; Body: { code?: string } }>("/sessions/:id/con
   return r;
 });
 
+// Challenge (spec demo step 4): one targeted experiment round on a single rule, streamed live via events.
+// A proven rule that holds stays proven ("challenged, held"); a contradiction disproves it with the counterexample.
+app.post<{ Params: { hid: string }; Body: { sessionId: string } }>("/hypotheses/:hid/challenge", async (req, reply) => {
+  const { sessionId } = req.body ?? ({} as any);
+  const store = await getStore();
+  const [h] = await store.find<any>("hypotheses", { sessionId, hid: req.params.hid });
+  if (!h) return reply.code(404).send({ error: "unknown rule" });
+  if (h.status === "disproven") return reply.code(400).send({ error: "rule is already disproven" });
+  const { experimentRound, withDefaults } = await import("./loop.ts");
+  const { setChallenge } = await import("./hypotheses.ts");
+  const last = (await store.find<any>("observations", { sessionId }, { sort: { round: -1 }, limit: 1 }))[0]?.round ?? 0;
+  const round = last + 1;
+  await setChallenge(h, { by: "human", reason: "challenge", round });
+  await emit(sessionId, "challenge_started", { hid: h.hid, round });
+  experimentRound(withDefaults({ sessionId, only: [h.hid], log: (s) => console.log(`[${sessionId}] ${s}`) }), round)
+    .then(async (r) => {
+      const [after] = await store.find<any>("hypotheses", { sessionId, hid: h.hid });
+      await emit(sessionId, "challenge_done", { hid: h.hid, round, before: h.status, after: after?.status, ran: r.ran, note: after?.history?.at(-1)?.note });
+    })
+    .catch((e) => emit(sessionId, "agent_error", { agent: "theorist", step: "challenge", error: String(e?.message ?? e) }));
+  return { ok: true, round };
+});
+
+// Stop: running steps finish, no new step starts (both orchestrators check `stopped`)
+app.post<{ Params: { id: string } }>("/sessions/:id/stop", async (req) => {
+  await (await getStore()).updateOne("sessions", { sessionId: req.params.id }, { stopped: true, aborted: true, abortReason: "stopped by user", stoppedAt: new Date() });
+  await emit(req.params.id, "session_stopped", { by: "user" });
+  return { ok: true };
+});
+
 // Reveal: the ONLY code path that reads ground_truth/, and only after the session is done.
 app.get<{ Params: { id: string } }>("/sessions/:id/reveal", async (req, reply) => {
   const [session] = await (await getStore()).find<any>("sessions", { sessionId: req.params.id });

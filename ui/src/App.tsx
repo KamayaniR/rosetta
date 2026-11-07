@@ -68,7 +68,7 @@ export function App() {
     let replayDone = false;
     es.addEventListener("replay_done", () => { replayDone = true; });
     const bump = () => { if (!replayDone) return; clearTimeout(timer); timer = setTimeout(() => refresh(sid).catch(() => {}), 800); };
-    for (const t of ["observation_added", "hypothesis_created", "hypothesis_updated", "experiment_started", "quirk_detected", "quirk_decided", "port_written", "verify_progress", "verify_done", "mismatch_found", "agent_message", "archivist_review", "phase", "session_done", "agent_error", "decisions_applied", "contract_generated"]) es.addEventListener(t, bump);
+    for (const t of ["observation_added", "hypothesis_created", "hypothesis_updated", "experiment_started", "quirk_detected", "quirk_decided", "port_written", "verify_progress", "verify_done", "mismatch_found", "agent_message", "archivist_review", "phase", "session_done", "agent_error", "decisions_applied", "contract_generated", "challenge_started", "challenge_done", "session_stopped"]) es.addEventListener(t, bump);
     return () => { es.close(); clearTimeout(timer); };
   }, [sid, mode, refresh]);
 
@@ -120,6 +120,10 @@ export function App() {
         <div className="stepper">
           {PHASES.map((p, i) => <div key={p} className={`step ${i < phaseIdx || view?.done ? "past" : ""} ${i === phaseIdx && !view?.done ? "now" : ""}`}>{PHASE_LABEL[p]}</div>)}
         </div>
+        {mode === "live" && state?.session && !state.session.done && !state.session.aborted && !view?.stopped && (
+          <button className="danger" onClick={async () => { if (confirm("Stop this session? Running steps finish; no new step starts.")) { await postJSON(`/sessions/${sid}/stop`, {}); refresh(sid!); } }}>Stop session</button>
+        )}
+        {(state?.session?.aborted || view?.stopped) && !state?.session?.done && <span className="pill">stopped</span>}
         <div className="modes">
           <button className={mode === "live" ? "on" : ""} onClick={() => { setMode("live"); setPlaying(false); }}>Live</button>
           <button className={mode === "replay" ? "on" : ""} disabled={!events.length} onClick={startReplay}>Replay</button>
@@ -152,7 +156,7 @@ export function App() {
                   <button className={rightTab === "court" ? "on" : ""} onClick={() => setRightTab("court")}>Quirk Court{view.quirks.length ? ` (${pendingQuirks ? `${pendingQuirks} pending` : view.quirks.length})` : ""}</button>
                 </div>
                 {rightTab === "ledger"
-                  ? <HypothesesPanel view={view} selected={selected} onSelect={setSelected} />
+                  ? <HypothesesPanel view={view} selected={selected} onSelect={setSelected} sessionId={sid!} live={mode === "live"} />
                   : <QuirkCourt view={view} sessionId={sid!} live={mode === "live"} onDecided={() => refresh(sid!)} />}
               </div>
             </section>

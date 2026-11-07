@@ -12,6 +12,7 @@ import type { Observation } from "./types.ts";
 export type LoopOptions = {
   sessionId: string; roundCap?: number; topN?: number; maxObsInPrompt?: number; log?: (s: string) => void;
   startRound?: number;  // continue numbering in an existing session
+  only?: string[];      // Challenge: experiment on exactly these rules (any status except disproven)
   archivist?: boolean;  // run the Archivist full-history review after every round
 };
 
@@ -80,7 +81,9 @@ export type RoundResult = { changes: number; tested: string[]; ran: number; empt
 export async function experimentRound(opts: Required<LoopOptions>, round: number): Promise<RoundResult> {
   const { sessionId, log } = opts;
   const hyps = await listHypotheses(sessionId);
-  const targets = selectTargets(hyps, opts.topN);
+  const targets = opts.only?.length
+    ? hyps.filter((h) => opts.only!.includes(h.hid) && h.status !== "disproven")
+    : selectTargets(hyps, opts.topN);
   if (!targets.length) {
     log(`round ${round}: nothing left to test`);
     return { changes: 0, tested: [], ran: 0, empty: true };
@@ -190,7 +193,7 @@ export async function experimentRound(opts: Required<LoopOptions>, round: number
 }
 
 export const withDefaults = (o: LoopOptions): Required<LoopOptions> =>
-  ({ roundCap: 4, topN: 5, maxObsInPrompt: 300, log: console.log, startRound: 1, archivist: false, ...o });
+  ({ roundCap: 4, topN: 5, maxObsInPrompt: 300, log: console.log, startRound: 1, archivist: false, only: [], ...o });
 
 export async function runLoop(o: LoopOptions) {
   const opts = withDefaults(o);

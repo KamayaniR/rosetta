@@ -176,6 +176,10 @@ async def on_result(ctx: Context, sender: str, msg: StepResult):
     if not s or msg.round != s["round"] and msg.step not in ("quirks", "build", "verify"):
         return  # unknown session or stale round
     result = json.loads(msg.result_json or "{}")
+    if not msg.ok and "session stopped" in str(msg.error):
+        print(f"[coordinator] {s['id']} stopped by user")
+        sessions.pop(s["id"], None)
+        return
     if not msg.ok:
         if s["retries"] < 1:  # retry once, then mark the step failed and move on
             s["retries"] += 1
