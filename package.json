@@ -8,7 +8,8 @@
     "ping": "tsx scripts/ping.ts",
     "guard": "tsx scripts/guard-test.ts",
     "typecheck": "tsc",
-    "sandbox-test": "tsx scripts/sandbox-test.ts"
+    "sandbox-test": "tsx scripts/sandbox-test.ts",
+    "seed": "tsx scripts/seed.ts"
   },
   "keywords": [],
   "author": "",
