@@ -119,6 +119,12 @@ def parse_tap(t: str, last_quirk: Optional[str] = None, last_card: str = "quirk"
     if m:
         action = (NUMBERED_REPORT if last_card == "report" else NUMBERED_QUIRK)[m.group(1)]
         return {"action": action, "hid": hid}
+    # planner-mediated form submissions arrive as prose, e.g. 'The user submitted fix_spec "..." for H27'
+    if hid and re.search(r"fix_spec|intended behavio|save fix|submitted", low):
+        q = re.search(r'["\u201c\u2018\']([^"\u201d\u2019\']{8,})["\u201d\u2019\']', s)
+        spec = q.group(1) if q else (s.split(":", 1)[1].strip() if ":" in s else "")
+        if spec:
+            return {"action": "fix_spec", "hid": hid, "fix_spec": spec}
     for a in ("preserve", "flag", "fix"):
         if re.search(rf"\b{a}\b", low) and hid:
             return {"action": a, "hid": hid}
