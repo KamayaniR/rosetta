@@ -4,7 +4,7 @@ import { emit } from "./events.ts";
 import { evalExpr, type Predicate } from "./predicate.ts";
 import type { Observation } from "./types.ts";
 
-export const CATEGORIES = ["parsing", "units", "rounding", "formatting", "errors", "types"] as const;
+export const CATEGORIES = ["parsing", "units", "rounding", "formatting", "errors", "types", "security"] as const;
 export type Category = (typeof CATEGORIES)[number];
 export type Status = "inferred" | "proven" | "disproven";
 

@@ -23,7 +23,9 @@
     "provenance-test": "tsx scripts/provenance-test.ts",
     "server": "tsx src/server.ts",
     "ui:build": "cd ui && npx vite build",
-    "ui:dev": "cd ui && npx vite"
+    "ui:dev": "cd ui && npx vite",
+    "security": "tsx scripts/security.ts",
+    "security-sanity": "tsx scripts/security-sanity.ts"
   },
   "keywords": [],
   "author": "",
