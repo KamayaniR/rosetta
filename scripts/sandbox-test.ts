@@ -28,3 +28,15 @@ for (const [name, code] of Object.entries(weird)) {
   const [r, after] = await runBatch(code, name, [I(1), I(2)]);
   console.log(name.padEnd(8), showOutcome(r.outcome), r.nondeterministic ? "NONDET" : "", r.sideEffects.join(","), "| next:", showOutcome(after.outcome));
 }
+
+const escapes: Record<string, string> = {
+  thisCtor: "module.exports=function(){return typeof this.constructor.constructor('return process')()}",
+  globalCtor: "module.exports=function(){return typeof (function(){return this})().constructor.constructor('return process')()}",
+  moduleCtor: "module.exports=function(){return typeof module.constructor.constructor('return process')()}",
+  getterCtor: "module.exports=function(){return typeof Object.getOwnPropertyDescriptor(globalThis,'console').get.constructor('return process')()}",
+  argCtor: "module.exports=function(v){return typeof v.constructor.constructor('return process')()}",
+};
+for (const [name, code] of Object.entries(escapes)) {
+  const [r] = await runBatch(code, name, [{ val: { t: "object", v: {} } }]);
+  console.log("escape", name.padEnd(11), showOutcome(r.outcome).slice(0, 90));
+}

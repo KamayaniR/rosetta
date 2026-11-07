@@ -9,7 +9,9 @@
     "guard": "tsx scripts/guard-test.ts",
     "typecheck": "tsc",
     "sandbox-test": "tsx scripts/sandbox-test.ts",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "loop": "tsx scripts/loop.ts",
+    "predicate-test": "tsx scripts/predicate-test.ts"
   },
   "keywords": [],
   "author": "",
