@@ -88,8 +88,12 @@ async def on_chat(ctx: Context, sender: str, msg: ChatMessage):
     # 1) pull: ASI:One shows replies to the user's own messages, so "status" answers with the latest cards
     low = t.lower().strip().strip("!?.")
     if st["session"] and low in ("status", "update", "progress", "next", "quirks", "report", "cards"):
-        msgs = await collect_updates(ctx, st, force_progress=True, all_quirks=(low == "quirks"))
-        for m in msgs[:4]:
+        want_quirks = low == "quirks"
+        msgs = await collect_updates(ctx, st, force_progress=not want_quirks, all_quirks=want_quirks)
+        if want_quirks and not st.get("quirks"):
+            await reply(ctx, sender, cards.text("No quirks yet: Quirk Court starts after the experiment rounds. Say \"status\" to see the phase."))
+            return
+        for m in msgs[:10]:
             await reply(ctx, sender, m)
         if not msgs:
             await reply(ctx, sender, cards.text("No update yet."))
