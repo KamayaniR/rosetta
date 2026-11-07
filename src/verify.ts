@@ -119,9 +119,12 @@ async function heldoutInputs(sessionId: string): Promise<CallInput[]> {
 export type VerifyReport = {
   sessionId: string; portVersion: number; createdAt: Date;
   fuzz: { seed: number; total: number; equal: number; low: number; high: number };
-  heldout: { seed: number; total: number; equal: number; low: number; high: number; matchRate: number };
+  heldout: { seed: number; total: number; equal: number; low: number; high: number; matchRate: number;
+    // held-out inputs that appear in NO observation (the strict number); seenElsewhere = also observed via experiments/fuzz
+    unseen: { total: number; equal: number; matchRate: number }; seenElsewhere: number };
   mismatches: { phase: "fuzz" | "heldout"; severity: string; call: string; original: string; port: string; reason?: string; shrunk: boolean }[];
   feedbackRunIds: string[];
+  feedbackBlocked: number; // fuzz counterexamples not fed back because they equal a held-out input
 };
 
 const tally = (ds: Diff[]) => ({
@@ -145,10 +148,16 @@ export async function verify(opts: { sessionId: string; fuzzSeed?: number; fuzzR
   await emit(sessionId, "verify_progress", { phase: "fuzz", ...tally(fuzz) });
   log(`  fuzz (seed ${fuzzSeed}): ${tally(fuzz).equal}/${fuzz.length} equal, ${tally(fuzz).low} low-severity, ${tally(fuzz).high} mismatches`);
 
-  const held = await runBoth(portJs, await heldoutInputs(sessionId));
+  const heldIn = await heldoutInputs(sessionId);
+  const heldKeys = new Set(heldIn.map((i) => JSON.stringify(i)));
+  const held = await runBoth(portJs, heldIn);
   const ht = tally(held);
+  // strict subset: held-out inputs that never occur as an observation input (seeds, experiments, fuzz feedback)
+  const obsKeys = new Set((await store.find<{ input: CallInput }>("observations", { sessionId })).map((o) => JSON.stringify(o.input)));
+  const unseenRuns = held.filter((d) => !obsKeys.has(JSON.stringify(d.input)));
+  const unseen = { total: unseenRuns.length, equal: unseenRuns.filter((d) => d.cmp.equal).length, matchRate: unseenRuns.length ? unseenRuns.filter((d) => d.cmp.equal).length / unseenRuns.length : 0 };
   await emit(sessionId, "verify_progress", { phase: "heldout", ...ht });
-  log(`  held-out (seed ${HELDOUT_SEED}): ${ht.equal}/${ht.total} equal (${((100 * ht.equal) / ht.total).toFixed(1)}%), ${ht.low} low, ${ht.high} mismatches`);
+  log(`  held-out (seed ${HELDOUT_SEED}): ${ht.equal}/${ht.total} equal (${((100 * ht.equal) / ht.total).toFixed(1)}%), ${ht.low} low, ${ht.high} mismatches; unseen-only ${unseen.equal}/${unseen.total} (${(100 * unseen.matchRate).toFixed(1)}%), ${ht.total - unseen.total} also appear as observations`);
 
   // shrink distinct fuzz mismatches (dedupe by reason), max 8
   const seenReason = new Set<string>();
@@ -167,18 +176,22 @@ export async function verify(opts: { sessionId: string; fuzzSeed?: number; fuzzR
   }
 
   // feedback: shrunk FUZZ mismatches become new observations of the original (Step 2 input), never held-out ones
+  // A fuzz counterexample identical to a held-out input is reported but NOT fed back (it would leak the held-out set).
   let feedbackRunIds: string[] = [];
-  if (shrunk.length) {
+  const feedable = shrunk.filter((d) => !heldKeys.has(JSON.stringify(d.input)));
+  const feedbackBlocked = shrunk.length - feedable.length;
+  if (feedbackBlocked) log(`  ${feedbackBlocked} fuzz counterexample(s) equal a held-out input: reported, not fed back`);
+  if (feedable.length) {
     const lastRound = (await store.find<any>("observations", { sessionId }, { sort: { round: -1 }, limit: 1 }))[0]?.round ?? 0;
-    const fb = await trace({ sessionId, round: lastRound, source: "fuzz", inputs: shrunk.map((d) => d.input) });
+    const fb = await trace({ sessionId, round: lastRound, source: "fuzz", inputs: feedable.map((d) => d.input) });
     feedbackRunIds = fb.map((o) => o.runId);
   }
 
   const report: VerifyReport = {
     sessionId, portVersion: port.version, createdAt: now,
     fuzz: { seed: fuzzSeed, ...tally(fuzz) },
-    heldout: { seed: HELDOUT_SEED, ...ht, matchRate: ht.equal / ht.total },
-    mismatches: rows, feedbackRunIds,
+    heldout: { seed: HELDOUT_SEED, ...ht, matchRate: ht.equal / ht.total, unseen, seenElsewhere: ht.total - unseen.total },
+    mismatches: rows, feedbackRunIds, feedbackBlocked,
   };
   await store.insertMany("verify_reports", [report]);
   await emit(sessionId, "verify_done", { portVersion: port.version, fuzz: report.fuzz, heldout: report.heldout, mismatches: rows.length });

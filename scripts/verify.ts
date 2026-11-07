@@ -13,7 +13,7 @@ bus.on("event", (e) => {
   if (e.type === "llm_call") { const p = e.payload as any; console.log(`  · ${p.agent} via ${p.provider} ${p.inputTokens}→${p.outputTokens} tok ${p.latencyMs}ms`); }
 });
 const show = (r: VerifyReport) => {
-  console.log(`port v${r.portVersion}: fuzz ${r.fuzz.equal}/${r.fuzz.total} equal | held-out ${(100 * r.heldout.matchRate).toFixed(1)}% (${r.heldout.equal}/${r.heldout.total}, ${r.heldout.low} low, ${r.heldout.high} high)`);
+  console.log(`port v${r.portVersion}: fuzz ${r.fuzz.equal}/${r.fuzz.total} equal | held-out ${(100 * r.heldout.matchRate).toFixed(1)}% (${r.heldout.equal}/${r.heldout.total}, ${r.heldout.low} low, ${r.heldout.high} high) | unseen-only held-out ${(100 * r.heldout.unseen.matchRate).toFixed(1)}% (${r.heldout.unseen.equal}/${r.heldout.unseen.total})`);
   for (const m of r.mismatches) console.log(`  [${m.phase} ${m.severity}${m.shrunk ? " shrunk" : ""}] ${m.call}\n      original: ${m.original.slice(0, 80)}\n      port:     ${m.port.slice(0, 80)}`);
   if (r.feedbackRunIds.length) console.log(`  fed back as observations: ${r.feedbackRunIds.join(" ")}`);
 };
