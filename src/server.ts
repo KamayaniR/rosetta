@@ -60,6 +60,9 @@ app.get<{ Params: { id: string } }>("/sessions/:id/state", async (req) => {
     quirks: await listQuirks(sessionId),
     port: port ?? null,
     verify: verify ?? null,
+    ports: await store.find("ports", { sessionId }, { sort: { version: 1 } }),
+    verifies: await store.find("verify_reports", { sessionId }, { sort: { createdAt: 1 } }),
+    properties: await store.find("properties", { sessionId }, { sort: { createdAt: 1 } }),
     findings: await store.find("archivist_findings", { sessionId }),
     agentMessages: await store.find("agent_messages", { sessionId }, { sort: { ts: 1 } }),
   };
@@ -80,6 +83,10 @@ app.get<{ Params: { id: string } }>("/sessions/:id/events", async (req, reply) =
 });
 
 app.get<{ Params: { id: string } }>("/sessions/:id/report", async (req) => buildReport(req.params.id));
+
+// all stored events as JSON (replay mode loads these once)
+app.get<{ Params: { id: string } }>("/sessions/:id/events.json", async (req) =>
+  (await getStore()).find("events", { sessionId: req.params.id }, { sort: { ts: 1 } }));
 
 app.get<{ Params: { id: string } }>("/sessions/:id/port.ts", async (req, reply) => {
   const [port] = await (await getStore()).find<any>("ports", { sessionId: req.params.id, compileOk: true }, { sort: { version: -1 }, limit: 1 });
@@ -165,6 +172,7 @@ app.post<{ Body: { agents: string[] } }>("/internal/agents-online", async (req) 
 
 // ---------- static UI (built) ----------
 const UI_DIST = resolve(ROOT, "ui/dist");
+if (existsSync(UI_DIST)) await app.register((await import("@fastify/static")).default, { root: resolve(UI_DIST, "assets"), prefix: "/assets/" });
 app.get("/", async (_req, reply) => (existsSync(resolve(UI_DIST, "index.html")) ? reply.type("text/html").send(readFileSync(resolve(UI_DIST, "index.html"))) : { rosetta: "backend up", ui: "not built" }));
 app.get("/health", async () => ({ ok: true, store: (await getStore()).kind, coordinator: await coordinatorUp() }));
 

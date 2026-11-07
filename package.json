@@ -21,7 +21,9 @@
     "mutation-test": "tsx scripts/mutation-test.ts",
     "e2e": "tsx scripts/e2e.ts",
     "provenance-test": "tsx scripts/provenance-test.ts",
-    "server": "tsx src/server.ts"
+    "server": "tsx src/server.ts",
+    "ui:build": "cd ui && npx vite build",
+    "ui:dev": "cd ui && npx vite"
   },
   "keywords": [],
   "author": "",
@@ -29,6 +31,7 @@
   "type": "module",
   "private": "true",
   "dependencies": {
+    "@fastify/static": "^10.1.10",
     "@google/genai": "^3.0.0",
     "@noble/curves": "^2.4.0",
     "@scure/base": "^2.4.0",
