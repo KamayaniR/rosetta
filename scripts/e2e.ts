@@ -57,7 +57,10 @@ console.log(`session ${sessionId}  (${((Date.now() - t0) / 60000).toFixed(1)} mi
 console.log(`rules: ${JSON.stringify(r.rules)} | found by Archivist: ${r.archivist.hypotheses} (${JSON.stringify(r.archivist.findingsByType)})`);
 if (r.archivist.lastContext) console.log(`archivist context: ${r.archivist.lastContext.archivistTokens} tok vs theorist ${r.archivist.lastContext.theoristTokens} tok (${r.archivist.lastContext.ratio?.toFixed(1)}x)`);
 console.log(`quirks: ${r.quirks.length} (${r.quirks.map((q) => q.hid).join(", ")}) all pending`);
-if (r.port) console.log(`port v${r.port.version}: agreement ${r.port.agreement?.equal}/${r.port.agreement?.total}; tagged lines never executed ${r.port.lineEvidence?.neverExecuted}/${r.port.lineEvidence?.tagged}`);
+console.log("port history:");
+for (const p of r.portHistory) console.log(`  v${p.version} ${p.provider}:${p.model} compile ${p.compileOk ? "ok" : `FAIL(${p.compileErrors})`} agreement-mismatch ${p.agreementMismatches ?? "-"} never-executed ${p.neverExecutedLines ?? "-"} fuzz ${p.fuzzMismatches ?? "-"} held-out ${p.heldoutMismatches ?? "-"} property-fails ${p.propertyFailures ?? "-"}`);
+if (r.verify?.properties) console.log(`properties: ${JSON.stringify(r.verify.properties)}`);
+if (r.port) console.log(`port v${r.port.version} by ${r.port.provider}:${r.port.model}: agreement ${r.port.agreement?.equal}/${r.port.agreement?.total}; tagged lines never executed ${r.port.lineEvidence?.neverExecuted}/${r.port.lineEvidence?.tagged}`);
 if (r.verify) console.log(`verify: fuzz ${r.verify.fuzz.equal}/${r.verify.fuzz.total} | held-out ${(100 * r.verify.heldout.matchRate).toFixed(1)}% | unseen-only ${(100 * r.verify.heldout.unseen.matchRate).toFixed(1)}% (${r.verify.heldout.unseen.equal}/${r.verify.heldout.unseen.total})`);
 console.log(`llm: ${r.llm.calls} calls ${JSON.stringify(r.llm.byProvider)}, ${r.llm.providerSwitches} provider switches, ${r.llm.agentErrors} agent errors`);
 console.log("written: out/ms.port.ts, out/report.json");

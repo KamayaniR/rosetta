@@ -9,7 +9,9 @@ export async function buildReport(sessionId: string) {
   const store = await getStore();
   const hyps = await listHypotheses(sessionId);
   const quirks = await listQuirks(sessionId);
-  const ports = await store.find<Port>("ports", { sessionId, compileOk: true }, { sort: { version: 1 } });
+  const allPorts = await store.find<Port>("ports", { sessionId }, { sort: { version: 1 } });
+  const ports = allPorts.filter((p) => p.compileOk);
+  const verifies = await store.find<VerifyReport>("verify_reports", { sessionId }, { sort: { createdAt: 1 } });
   const port = ports[ports.length - 1];
   const firstPort = ports[0];
   const [verify] = await store.find<VerifyReport>("verify_reports", { sessionId }, { sort: { createdAt: -1 }, limit: 1 });
@@ -39,13 +41,26 @@ export async function buildReport(sessionId: string) {
       lastContext: lastReview ? { archivistTokens: lastReview.archivistTokens, theoristTokens: lastReview.theoristTokens, ratio: lastReview.ratio } : null,
     },
     quirks: quirks.map((q) => ({ hid: q.hid, decision: q.decision, claim: q.claim, reason: q.reason })),
+    // every port version, including failed compiles, with its own mismatch counts (shows the loop fixing real failures)
+    portHistory: allPorts.map((p) => {
+      const vs = verifies.filter((v) => v.portVersion === p.version);
+      const v = vs[vs.length - 1];
+      return {
+        version: p.version, provider: p.provider ?? null, model: p.model ?? null, attempt: p.attempts, compileOk: p.compileOk,
+        compileErrors: p.diagnostics?.length ?? 0, lintOk: p.lint?.ok ?? null,
+        agreementMismatches: p.agreement ? p.agreement.total - p.agreement.equal : null,
+        neverExecutedLines: p.evidenceSummary?.neverExecuted ?? null,
+        fuzzMismatches: v ? v.fuzz.high : null, heldoutMismatches: v ? v.heldout.high : null,
+        propertyFailures: v && v.properties && "portFails" in v.properties ? v.properties.portFails : null,
+      };
+    }),
     port: port && {
-      version: port.version, versions: ports.length,
+      version: port.version, versions: ports.length, provider: port.provider ?? null, model: port.model ?? null,
       agreement: port.agreement,
       lineEvidence: port.evidenceSummary,
       firstPortLineEvidence: firstPort?.evidenceSummary,
     },
-    verify: verify && { fuzz: verify.fuzz, heldout: verify.heldout, mismatches: verify.mismatches.length, feedbackBlocked: verify.feedbackBlocked },
+    verify: verify && { fuzz: verify.fuzz, properties: verify.properties ?? null, heldout: verify.heldout, mismatches: verify.mismatches.length, feedbackBlocked: verify.feedbackBlocked },
     llm: {
       calls: llm.length,
       byProvider: llm.reduce<Record<string, number>>((m, c) => ((m[c.provider] = (m[c.provider] ?? 0) + 1), m), {}),

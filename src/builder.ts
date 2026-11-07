@@ -25,6 +25,8 @@ export type Port = {
   unknownTags: string[];
   lint: { hits: string[]; ok: boolean };
   attempts: number;
+  provider?: string;
+  model?: string;
   agreement?: { total: number; equal: number; lowOnly: number; mismatches: string[] };
   lineEvidence?: LineEvidence[];
   evidenceSummary?: EvidenceSummary;
@@ -109,7 +111,7 @@ export async function build(opts: { sessionId: string; maxRetries?: number; log?
     const unknownTags = [...new Set(ruleMap.flatMap((t) => [...t.hids, ...t.quirks.map((q) => q.hid)]).filter((h) => !known.has(h)))];
     const version = (await store.nextSeq(`${sessionId}:port`)) as number;
     const port: Port = {
-      sessionId, version, code, compileOk: diagnostics.length === 0, diagnostics, ruleMap, unknownTags, lint, attempts: attempt, createdAt: new Date(),
+      sessionId, version, code, compileOk: diagnostics.length === 0, diagnostics, ruleMap, unknownTags, lint, attempts: attempt, provider: r.provider, model: r.model, createdAt: new Date(),
     };
     if (port.compileOk && lint.ok) {
       port.agreement = await agreement(code, obs);
@@ -118,7 +120,7 @@ export async function build(opts: { sessionId: string; maxRetries?: number; log?
       port.evidenceSummary = ev.summary;
     }
     await store.insertMany("ports", [port]);
-    log(`  port v${version}: compile ${port.compileOk ? "OK" : `FAIL (${diagnostics.length})`}, lint ${lint.ok ? "OK" : "FAIL"} (${lint.hits.length} observed literals), ${ruleMap.length} tagged lines${unknownTags.length ? `, unknown tags ${unknownTags.join(",")}` : ""}`);
+    log(`  port v${version} (${r.provider}:${r.model}): compile ${port.compileOk ? "OK" : `FAIL (${diagnostics.length})`}, lint ${lint.ok ? "OK" : "FAIL"} (${lint.hits.length} observed literals), ${ruleMap.length} tagged lines${unknownTags.length ? `, unknown tags ${unknownTags.join(",")}` : ""}`);
     last = port;
     if (port.compileOk && lint.ok) {
       lastCompiling = port;

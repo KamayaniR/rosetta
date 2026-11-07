@@ -13,6 +13,7 @@ import { trace, targetOf, TARGET_PATH } from "./tracer.ts";
 import { fmtCall } from "./theorist.ts";
 import type { CallInput, Outcome, TaggedValue } from "./types.ts";
 import type { Port } from "./builder.ts";
+import { propertyTests } from "./skeptic.ts";
 
 // ---------- arbitraries (§7 Step 6) ----------
 const UNITS = ["ms", "msec", "msecs", "millisecond", "milliseconds", "s", "sec", "secs", "second", "seconds", "m", "min", "mins",
@@ -119,10 +120,11 @@ async function heldoutInputs(sessionId: string): Promise<CallInput[]> {
 export type VerifyReport = {
   sessionId: string; portVersion: number; createdAt: Date;
   fuzz: { seed: number; total: number; equal: number; low: number; high: number };
+  properties?: { model: string; proposed: number; holds: number; portFails: number; wrongProperty: number; invalidOrVacuous: number } | { error: string };
   heldout: { seed: number; total: number; equal: number; low: number; high: number; matchRate: number;
     // held-out inputs that appear in NO observation (the strict number); seenElsewhere = also observed via experiments/fuzz
     unseen: { total: number; equal: number; matchRate: number }; seenElsewhere: number };
-  mismatches: { phase: "fuzz" | "heldout"; severity: string; call: string; original: string; port: string; reason?: string; shrunk: boolean }[];
+  mismatches: { phase: "fuzz" | "heldout" | "property"; severity: string; call: string; original: string; port: string; reason?: string; shrunk: boolean }[];
   feedbackRunIds: string[];
   feedbackBlocked: number; // fuzz counterexamples not fed back because they equal a held-out input
 };
@@ -145,9 +147,24 @@ export async function verify(opts: { sessionId: string; fuzzSeed?: number; fuzzR
   const fuzzSeed = opts.fuzzSeed ?? Date.now() % 1_000_000;
 
   const fuzzIn = sampleInputs(fuzzSeed, opts.fuzzRuns ?? 2000);
+  const rowsProps: VerifyReport["mismatches"] = [];
   const fuzz = await runBoth(portJs, fuzzIn, target);
   await emit(sessionId, "verify_progress", { phase: "fuzz", ...tally(fuzz) });
   log(`  fuzz (seed ${fuzzSeed}): ${tally(fuzz).equal}/${fuzz.length} equal, ${tally(fuzz).low} low-severity, ${tally(fuzz).high} mismatches`);
+
+  // Skeptic property tests (Gemini) on the fuzz inputs; never blocks verification if the model call fails
+  let properties: VerifyReport["properties"];
+  try {
+    const pt = await propertyTests(sessionId, port.version, fuzzIn, fuzz.map((d) => d.original), fuzz.map((d) => d.port));
+    properties = pt.summary;
+    log(`  properties (${pt.summary.model}): ${pt.summary.proposed} proposed, ${pt.summary.holds} hold on both, ${pt.summary.portFails} fail on port, ${pt.summary.wrongProperty} wrong (fail on original, discarded), ${pt.summary.invalidOrVacuous} invalid/vacuous`);
+    for (const x of pt.results.filter((x) => x.status === "port_fails")) {
+      rowsProps.push({ phase: "property", severity: "high", call: x.name, original: "property holds", port: `fails on ${x.portFails.length} inputs`, reason: x.description, shrunk: false });
+    }
+  } catch (e: any) {
+    properties = { error: String(e?.message ?? e) };
+    log(`  properties skipped: ${properties.error}`);
+  }
 
   const heldIn = await heldoutInputs(sessionId);
   const heldKeys = new Set(heldIn.map((i) => JSON.stringify(i)));
@@ -166,7 +183,7 @@ export async function verify(opts: { sessionId: string; fuzzSeed?: number; fuzzR
   const shrunk: Diff[] = [];
   for (const d of toShrink) shrunk.push(await shrink(portJs, d, 12, target));
 
-  const rows: VerifyReport["mismatches"] = [];
+  const rows: VerifyReport["mismatches"] = [...rowsProps];
   const now = new Date();
   for (const d of shrunk) rows.push({ phase: "fuzz", severity: d.cmp.severity, call: fmtCall(d.input), original: showOutcome(d.original), port: showOutcome(d.port), reason: d.cmp.reason, shrunk: true });
   // held-out mismatches are reported by count + a few examples, but never fed back (they must stay unseen)
@@ -191,6 +208,7 @@ export async function verify(opts: { sessionId: string; fuzzSeed?: number; fuzzR
   const report: VerifyReport = {
     sessionId, portVersion: port.version, createdAt: now,
     fuzz: { seed: fuzzSeed, ...tally(fuzz) },
+    properties,
     heldout: { seed: HELDOUT_SEED, ...ht, matchRate: ht.equal / ht.total, unseen, seenElsewhere: ht.total - unseen.total },
     mismatches: rows, feedbackRunIds, feedbackBlocked,
   };
