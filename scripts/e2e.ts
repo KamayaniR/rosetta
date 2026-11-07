@@ -58,6 +58,7 @@ console.log(`  contract: ${contract.rules.length} rule groups, ${contract.quirks
 phase("report");
 const report = await buildReport(sessionId);
 await store.insertMany("reports", [report]);
+await store.updateOne("sessions", { sessionId }, { done: true, finishedAt: new Date(), phase: "contract" }); // enables Reveal
 const dir = resolve(import.meta.dirname, "..", "out");
 mkdirSync(dir, { recursive: true });
 writeFileSync(resolve(dir, "report.json"), JSON.stringify(report, null, 2));

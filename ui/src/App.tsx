@@ -106,7 +106,12 @@ export function App() {
         <div className="brand"><span className="logo">◆</span> Rosetta</div>
         <select value={sid ?? ""} onChange={(e) => { setMode("live"); setSid(e.target.value); }}>
           <option value="" disabled>select a session…</option>
-          {sessions.map((s) => <option key={s.sessionId} value={s.sessionId}>{s.sessionId.replace(/^s_\d{8}/, "")} · {s.orchestrator ?? "cli"}{s.done ? " · done" : ""}</option>)}
+          {sessions.map((s) => {
+            const t = new Date(s.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+            const how = s.orchestrator === "fetch" ? (s.source?.kind === "agentverse" ? "ASI:One → Fetch.ai agents" : "Fetch.ai agents") : s.orchestrator === "node" ? "backend" : "CLI run";
+            const st = s.done ? `${s.proven} proven` : s.aborted ? "stopped" : `running · ${s.proven} proven`;
+            return <option key={s.sessionId} value={s.sessionId}>{t} · {how} · {st}</option>;
+          })}
         </select>
         <button className="primary" disabled={busy} onClick={start}>{busy ? "Starting…" : "Start session"}</button>
         <div className="stepper">
