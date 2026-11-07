@@ -23,8 +23,10 @@ def _msg(text: str, kind: Optional[str] = None, payload: Optional[dict] = None, 
         if len(body) <= MAX_PAYLOAD:
             content.append(MetadataContent(type="metadata", metadata={
                 "card_protocol_version": "1",
-                "requires_card_interaction": "true" if interactive else "false",
+                # required to be "true" (docs); informational cards are marked with is_terminal instead
+                "requires_card_interaction": "true",
                 **({} if interactive else {"is_terminal": "true"}),
+                "preferred_drawer_width_px": "540",
                 "card_kind": kind,
                 "card_payload": body,
             }))
