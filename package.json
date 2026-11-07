@@ -20,7 +20,8 @@
     "verify": "tsx scripts/verify.ts",
     "mutation-test": "tsx scripts/mutation-test.ts",
     "e2e": "tsx scripts/e2e.ts",
-    "provenance-test": "tsx scripts/provenance-test.ts"
+    "provenance-test": "tsx scripts/provenance-test.ts",
+    "server": "tsx src/server.ts"
   },
   "keywords": [],
   "author": "",
