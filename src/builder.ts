@@ -27,7 +27,8 @@ export type Port = {
   attempts: number;
   provider?: string;
   model?: string;
-  agreement?: { total: number; equal: number; lowOnly: number; mismatches: string[] };
+  // total/equal exclude runs a Fix decision covers; those are counted in `intentional` (they are supposed to differ)
+  agreement?: { total: number; equal: number; lowOnly: number; mismatches: string[]; intentional?: number; intentionalByHid?: Record<string, number> };
   lineEvidence?: LineEvidence[];
   evidenceSummary?: EvidenceSummary;
   createdAt: Date;
@@ -62,8 +63,20 @@ export function extractCode(text: string): string {
   return code;
 }
 
-async function agreement(code: string, obs: Observation[]): Promise<Port["agreement"]> {
-  const usable = obs.filter((o) => !o.nondeterministic);
+export async function agreement(code: string, obs: Observation[], sessionId?: string): Promise<Port["agreement"]> {
+  let usable = obs.filter((o) => !o.nondeterministic);
+  // runs covered by a Fix decision are intentional divergences, not disagreements
+  const intentionalByHid: Record<string, number> = {};
+  if (sessionId) {
+    const { evalExpr } = await import("./predicate.ts");
+    const fixes = (await listQuirks(sessionId)).filter((q: any) => q.decision === "fix" && q.fixPredicate);
+    const covered = new Set<string>();
+    for (const q of fixes as any[]) {
+      const r = evalExpr({ kind: "expr", applies: q.fixPredicate.applies, holds: "true" }, usable);
+      for (const id of r.pass) if (!covered.has(id)) { covered.add(id); intentionalByHid[q.hid] = (intentionalByHid[q.hid] ?? 0) + 1; }
+    }
+    usable = usable.filter((o) => !covered.has(o.runId));
+  }
   const js = transpile(code);
   const res = await runBatch(js, "ms.port.js", usable.map((o) => o.input), { repeats: 1 });
   let equal = 0, lowOnly = 0;
@@ -74,7 +87,8 @@ async function agreement(code: string, obs: Observation[]): Promise<Port["agreem
     else if (c.severity === "low") lowOnly++;
     else if (mismatches.length < 25) mismatches.push(usable[i].runId);
   });
-  return { total: usable.length, equal, lowOnly, mismatches };
+  const intentional = Object.values(intentionalByHid).reduce((a, b) => a + b, 0);
+  return { total: usable.length, equal, lowOnly, mismatches, ...(intentional ? { intentional, intentionalByHid } : {}) };
 }
 
 export async function build(opts: { sessionId: string; maxRetries?: number; log?: (s: string) => void; feedback?: string }): Promise<Port> {
@@ -114,7 +128,7 @@ export async function build(opts: { sessionId: string; maxRetries?: number; log?
       sessionId, version, code, compileOk: diagnostics.length === 0, diagnostics, ruleMap, unknownTags, lint, attempts: attempt, provider: r.provider, model: r.model, createdAt: new Date(),
     };
     if (port.compileOk && lint.ok) {
-      port.agreement = await agreement(code, obs);
+      port.agreement = await agreement(code, obs, sessionId);
       const ev = await portLineEvidence(code, ruleMap, obs);
       port.lineEvidence = ev.lines;
       port.evidenceSummary = ev.summary;

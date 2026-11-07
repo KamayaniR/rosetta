@@ -31,7 +31,7 @@ const log = (sessionId: string) => (s: string) => { console.log(`[${sessionId}] 
 
 export const MAX_UPLOAD_BYTES = 200 * 1024;
 
-export async function createSession(opts: { orchestrator: "node" | "fetch"; source?: { kind: "web" | "agentverse"; caller?: string; request?: string }; code?: string }) {
+export async function createSession(opts: { orchestrator: "node" | "fetch"; source?: { kind: "web" | "agentverse"; caller?: string; request?: string }; code?: string; hidden?: boolean }) {
   const store = await getStore();
   const sessionId = `s_${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")}_${randomBytes(2).toString("hex")}`;
   let target = TARGET_PATH;
@@ -43,7 +43,7 @@ export async function createSession(opts: { orchestrator: "node" | "fetch"; sour
     writeFileSync(resolve(dir, `${sessionId}.js`), opts.code);
     target = `target/uploads/${sessionId}.js`;
   }
-  await store.insertMany("sessions", [{ sessionId, target, createdAt: new Date(), store: store.kind, orchestrator: opts.orchestrator, source: opts.source ?? { kind: "web" }, phase: "trace", done: false }]);
+  await store.insertMany("sessions", [{ sessionId, target, hidden: !!opts.hidden, createdAt: new Date(), store: store.kind, orchestrator: opts.orchestrator, source: opts.source ?? { kind: "web" }, phase: "trace", done: false }]);
   await emit(sessionId, "session_started", { target, orchestrator: opts.orchestrator, source: opts.source ?? { kind: "web" } });
   return sessionId;
 }

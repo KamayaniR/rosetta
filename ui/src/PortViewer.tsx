@@ -80,7 +80,7 @@ export function PortViewer({ view, selected, onSelect }: { view: View; selected:
   return (
     <div className="panel port">
       <div className="panel-h">
-        <h3>Port <span className="muted">out/ms.port.ts</span></h3>
+        <h3>TypeScript port</h3>
         {ports.length > 0 && (
           <select value={port?.version ?? ""} onChange={(e) => setVersion(Number(e.target.value))}>
             {ports.map((p: any) => <option key={p.version} value={p.version}>v{p.version} · {p.provider ?? "?"}</option>)}
@@ -90,11 +90,11 @@ export function PortViewer({ view, selected, onSelect }: { view: View; selected:
       {port ? (
         <>
           <div className="legend">
-            <span className="sw green" /> proven + executed {counts.green ?? 0}
-            <span className="sw yellow" /> inferred / never executed {counts.yellow ?? 0}
+            <span className="sw green" /> proven {counts.green ?? 0}
+            <span className="sw yellow" /> unproven {counts.yellow ?? 0}
             <span className="sw red" /> disputed {counts.red ?? 0}
             <span className="sw quirk" /> quirk
-            {port.agreement && <span className="muted"> · agreement {port.agreement.equal}/{port.agreement.total}</span>}
+            {port.agreement && <span className="muted"> · agreement {port.agreement.equal}/{port.agreement.total}{port.agreement.intentional ? ` + ${port.agreement.intentional} intentional (Fix ${Object.keys(port.agreement.intentionalByHid ?? {}).join(", ")})` : ""}</span>}
           </div>
           <div className="editor">
             <Editor height="100%" theme="vs-dark" language="typescript" value={port.code} onMount={onMount}

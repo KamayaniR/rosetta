@@ -13,11 +13,10 @@ export function TracePanel({ view, evidence }: { view: View; evidence: Set<strin
   }, [view.observations, src, kind, evidence]);
   return (
     <div className="panel trace">
-      <div className="panel-h"><h3>Trace inspector</h3><span className="muted">{view.observations.length} runs</span></div>
-      <div className="chips">
-        {["all", "seed", "experiment", "fuzz"].map((s) => <button key={s} className={src === s ? "on" : ""} onClick={() => setSrc(s)}>{s}</button>)}
-        <span className="sep" />
-        {["all", "return", "throw", "timeout", "crash"].map((k) => <button key={k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>{k}</button>)}
+      <div className="panel-h"><h3>Trace</h3><span className="muted">{view.observations.length} runs of the minified original</span></div>
+      <div className="filters">
+        <select value={src} onChange={(e) => setSrc(e.target.value)}>{["all", "seed", "experiment", "fuzz"].map((x) => <option key={x} value={x}>{x === "all" ? "all sources" : x}</option>)}</select>
+        <select value={kind} onChange={(e) => setKind(e.target.value)}>{["all", "return", "throw", "timeout", "crash"].map((x) => <option key={x} value={x}>{x === "all" ? "all outcomes" : x}</option>)}</select>
       </div>
       {evidence.size > 0 && <div className="hint">{evidence.size} runs cited by the selected rule are highlighted</div>}
       <div className="rows">
@@ -49,8 +48,7 @@ export function HypothesesPanel({ view, selected, onSelect }: { view: View; sele
   const counts = view.hypotheses.reduce((m: any, h) => ((m[h.status] = (m[h.status] ?? 0) + 1), m), {});
   const list = view.hypotheses.filter((h) => filter === "all" || h.status === filter || (filter === "archivist" && h.source === "archivist"));
   return (
-    <div className="panel hyps">
-      <div className="panel-h"><h3>Evidence ledger</h3><span className="muted">{counts.proven ?? 0} proven · {counts.inferred ?? 0} inferred · {counts.disproven ?? 0} disproven</span></div>
+    <div className="pane hyps">
       <div className="chips">{["all", "proven", "inferred", "disproven", "archivist"].map((f) => <button key={f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)}>{f}</button>)}</div>
       <div className="cards">
         {[...list].reverse().map((h) => (
@@ -80,7 +78,7 @@ export function QuirkCourt({ view, sessionId, live, onDecided }: { view: View; s
   const [spec, setSpec] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
-  if (!view.quirks.length) return null;
+  if (!view.quirks.length) return <div className="pane"><div className="muted small">No quirks yet. The quirk judge (Gemini) flags surprising proven behavior before the port is written.</div></div>;
   const obs = new Map(view.observations.map((o) => [o.runId, o]));
   const decide = async (hid: string, decision: string, fixSpec?: string) => {
     setErr(null);
@@ -88,8 +86,8 @@ export function QuirkCourt({ view, sessionId, live, onDecided }: { view: View; s
     catch (e: any) { setErr(e.message); }
   };
   return (
-    <div className="panel court">
-      <div className="panel-h"><h3>Quirk Court</h3><span className="muted">pending = preserve</span></div>
+    <div className="pane court">
+      <div className="muted small">Decide what each surprising behavior should become. Pending = Preserve.</div>
       {err && <div className="error small">{err}</div>}
       {live && view.quirks.some((q) => q.decision !== "pending") && (
         <div className="applybar">
@@ -139,7 +137,7 @@ export function AgentsPanel({ view, session }: { view: View; session: any }) {
   const models: Record<string, string> = { tracer: "sandbox", theorist: "Muse Spark", archivist: "SubQ Snap", builder: "Muse Spark", skeptic: "Gemini" };
   const fetchMode = session?.orchestrator === "fetch";
   return (
-    <div className="panel agents">
+    <div className="pane agents">
       <div className="panel-h"><h3>Agents <span className="muted">Fetch.ai uAgents</span></h3><span className="muted">{fetchMode ? `${msgs.length} signed messages` : "Node orchestrator · entries unsigned (fallback)"}</span></div>
       <div className="agents-body">
         <svg viewBox="0 0 300 190" className="net">
@@ -185,7 +183,7 @@ export function ArchivistPanel({ view }: { view: View }) {
   const first = view.ports.find((p: any) => p.evidenceSummary), lastP = view.port;
   const ratio = r?.ratio ? r.ratio : null;
   return (
-    <div className="panel archivist">
+    <div className="pane archivist">
       <div className="panel-h"><h3>Archivist <span className="muted">SubQ Snap · full history</span></h3><span className="muted">{r ? `review round ${r.round}` : "no review yet"}</span></div>
       <div className="stats">
         <div className="stat"><div className="v">{r ? r.archivistTokens.toLocaleString() : "–"}</div><div className="l">Archivist sees (tokens)<br />{r ? `${r.runs} runs · ${r.rules} rules · ${r.questions} questions` : ""}</div></div>
@@ -204,7 +202,7 @@ export function ArchivistPanel({ view }: { view: View }) {
 }
 
 // ---------- Bottom drawer: verify / port history / report / reveal ----------
-export function Drawer({ view, sessionId }: { view: View; sessionId: string }) {
+export function Drawer({ view, sessionId, session }: { view: View; sessionId: string; session: any }) {
   const [tab, setTab] = useState("verify");
   const [report, setReport] = useState<any>(null);
   const [reveal, setReveal] = useState<any>(null);
@@ -221,7 +219,8 @@ export function Drawer({ view, sessionId }: { view: View; sessionId: string }) {
   return (
     <div className="panel drawer">
       <div className="tabs">
-        {["verify", "history", "contract", "report", "reveal"].map((t) => <button key={t} className={tab === t ? "on" : ""} disabled={t === "reveal" && !view.done} onClick={() => load(t)}>{t === "history" ? "port history" : t}</button>)}
+        {[["verify", "Verify"], ["archivist", "Archivist · SubQ"], ["agents", "Agents · Fetch.ai"], ["contract", "Contract"], ["history", "Port history"], ["report", "Report"], ["reveal", "Reveal"]].map(([t, label]) =>
+          <button key={t} className={tab === t ? "on" : ""} disabled={t === "reveal" && !view.done} onClick={() => load(t)}>{label}</button>)}
       </div>
       {err && <div className="error small">{err}</div>}
       {tab === "verify" && (v ? (
@@ -257,6 +256,8 @@ export function Drawer({ view, sessionId }: { view: View; sessionId: string }) {
         </table>
       )}
       {tab === "contract" && <ContractTab sessionId={sessionId} port={view.port} />}
+      {tab === "archivist" && <ArchivistPanel view={view} />}
+      {tab === "agents" && <AgentsPanel view={view} session={session} />}
       {tab === "report" && report && (
         <div className="report">
           <div><b>Rules</b> {JSON.stringify(report.rules)} · <b>observations</b> {report.observations.total}</div>

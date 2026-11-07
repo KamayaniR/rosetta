@@ -51,7 +51,8 @@ app.post<{ Body: { orchestrator?: "node" | "fetch"; rounds?: number; top?: numbe
   return { sessionId, orchestrator };
 });
 
-app.get("/sessions", async () => (await getStore()).find("sessions", {}, { sort: { createdAt: -1 }, limit: 20 }));
+// test/sanity sessions (e.g. the ReDoS detector check) are hidden from the picker
+app.get("/sessions", async () => (await (await getStore()).find<any>("sessions", {}, { sort: { createdAt: -1 }, limit: 60 })).filter((s) => !s.hidden).slice(0, 20));
 
 app.get<{ Params: { id: string } }>("/sessions/:id/state", async (req) => {
   const store = await getStore();
