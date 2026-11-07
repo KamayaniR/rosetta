@@ -75,7 +75,7 @@ async function agreement(code: string, obs: Observation[]): Promise<Port["agreem
   return { total: usable.length, equal, lowOnly, mismatches };
 }
 
-export async function build(opts: { sessionId: string; maxRetries?: number; log?: (s: string) => void }): Promise<Port> {
+export async function build(opts: { sessionId: string; maxRetries?: number; log?: (s: string) => void; feedback?: string }): Promise<Port> {
   const { sessionId } = opts;
   const log = opts.log ?? console.log;
   const maxRetries = opts.maxRetries ?? 3;
@@ -94,6 +94,7 @@ export async function build(opts: { sessionId: string; maxRetries?: number; log?
       ? `Disproven claims (these are WRONG, do not implement them):\n${hyps.filter((h) => h.status === "disproven").map((h) => `${h.hid}: ${h.claim}`).join("\n")}`
       : "",
     quirks.length ? `Quirk decisions:\n${quirks.map(fmtQuirk).join("\n")}` : "Quirk decisions: none yet.",
+    opts.feedback ?? "",
   ].filter(Boolean).join("\n\n");
 
   let user = baseUser;

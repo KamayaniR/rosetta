@@ -16,7 +16,9 @@
     "build-port": "tsx scripts/build.ts",
     "evidence": "tsx scripts/evidence.ts",
     "coverage-test": "tsx scripts/coverage-test.ts",
-    "archivist": "tsx scripts/archivist.ts"
+    "archivist": "tsx scripts/archivist.ts",
+    "verify": "tsx scripts/verify.ts",
+    "mutation-test": "tsx scripts/mutation-test.ts"
   },
   "keywords": [],
   "author": "",
@@ -26,6 +28,7 @@
   "dependencies": {
     "@google/genai": "^3.0.0",
     "dotenv": "^18.0.9",
+    "fast-check": "^4.10.2",
     "mongodb": "^7.8.0",
     "openai": "^7.53.0",
     "ts5": "npm:typescript@^5.9.2",
