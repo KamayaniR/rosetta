@@ -112,6 +112,8 @@ export async function runStep(step: StepName, a: Args): Promise<Record<string, u
     }
     case "contract": {
       await setPhase(sessionId, "contract");
+      // Archivist Job 3: final audit of the port's tags before the contract locks the behavior in
+      try { await (await import("./audit.ts")).auditPort(sessionId, L); } catch (e: any) { L(`audit skipped: ${e?.message ?? e}`); }
       const c = await buildContract(sessionId);
       return { rules: c.rules.length, quirks: c.quirks.length, snapshot: c.snapshot.length };
     }

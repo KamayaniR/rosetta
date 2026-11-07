@@ -73,7 +73,7 @@ export function HypothesesPanel({ view, selected, onSelect, sessionId, live }: {
               {h.signerName ? <span className={`sig ${h.verified === true ? "ok" : "bad"}`}>signed by {h.signerName} {h.verified === true ? "✓" : "✗"}</span> : <span className="sig gray">unsigned</span>}
             </div>
             {h.status === "disproven" && <div className="note">{h.history[h.history.length - 1]?.note}</div>}
-            {(() => { const d = view.challenges.filter((c) => c.hid === h.hid && c.state === "done").pop(); return d ? <div className={`note ${d.after === "disproven" ? "bad" : "good"}`}>Challenge (round {d.round}): {d.before} → {d.after}, {d.ran} new runs{d.note ? ` · ${d.note}` : ""}</div> : null; })()}
+            {(() => { const d = view.challenges.filter((c) => c.hid === h.hid && c.state === "done").pop(); return d ? <div className={`note ${d.after === "disproven" ? "bad" : "good"}`}>Challenge (round {d.round}): {d.before} → {d.after}, {d.ran} new runs{d.note ? ` · ${d.note}` : ""}{d.revision ? <div className="good">Revised as {d.revision.hid} ({d.revision.status}): {d.revision.claim}</div> : null}</div> : null; })()}
             {live && sessionId && h.status !== "disproven" && (
               <div className="actions" onClick={(e) => e.stopPropagation()}>
                 <button disabled={running.has(h.hid) || challenging[h.hid] === "starting"} onClick={() => challenge(h.hid)}>
@@ -192,7 +192,21 @@ export function AgentsPanel({ view, session }: { view: View; session: any }) {
 }
 
 // ---------- Lower: Archivist (SubQ) ----------
-export function ArchivistPanel({ view }: { view: View }) {
+function FinalAudit({ sessionId }: { sessionId?: string }) {
+  const [a, setA] = useState<any>(null);
+  useEffect(() => { if (sessionId) getJSON(`/sessions/${sessionId}/port-audit`).then(setA).catch(() => {}); }, [sessionId]);
+  if (!a) return null;
+  const label: Record<string, string> = { unknown_rule: "unknown rule", unproven_rule: "only inferred", disproven_rule: "disproven rule", never_executed: "never executed", quirk_mismatch: "quirk tag ≠ decision", untagged_code: "no tag", tag_not_implemented: "tag on wrong code (SubQ)" };
+  return (
+    <div className="audit">
+      <b>Final audit (Job 3)</b> · port v{a.portVersion}: {a.taggedLines} tagged lines, {a.rulesChecked} rules checked by SubQ ({a.subq?.inputTokens ? `${a.subq.inputTokens.toLocaleString()} tokens, one request` : a.subq?.error ?? ""})
+      <div className="chips">{Object.entries(a.counts).map(([k, n]: any) => <span key={k} className={`ft t-${k}`}>{label[k] ?? k}: {n}</span>)}{!Object.keys(a.counts).length && <span className="good">no issues</span>}</div>
+      <div className="feed">{a.issues.filter((i: any) => i.kind !== "unproven_rule" && i.kind !== "untagged_code").slice(0, 8).map((i: any, k: number) => <div key={k} className="finding mono small">L{i.line} [{label[i.kind]}] {i.detail} · {i.code}</div>)}</div>
+    </div>
+  );
+}
+
+export function ArchivistPanel({ view, sessionId }: { view: View; sessionId?: string }) {
   const r = view.review;
   const arch = view.hypotheses.filter((h) => h.source === "archivist");
   const distinct = new Map(view.findings.map((f) => [`${f.type}:${f.fid ?? f.hid ?? f.category}`, f]));
@@ -209,6 +223,7 @@ export function ArchivistPanel({ view }: { view: View }) {
         <div className="stat"><div className="v">{first && lastP ? `${first.evidenceSummary.neverExecuted}→${lastP.evidenceSummary?.neverExecuted ?? "?"}` : "–"}</div><div className="l">Port lines never executed<br />first port → current</div></div>
       </div>
       {ratio && <div className="ratio"><div style={{ width: `${Math.min(100, (1 / ratio) * 100)}%` }} className="t" /><span>{ratio.toFixed(1)}× more evidence in one SubQ request</span></div>}
+      <FinalAudit sessionId={sessionId} />
       <div className="feed">
         {[...view.findings].reverse().slice(0, 30).map((f: any, i: number) => (
           <div key={i} className="finding"><span className={`ft t-${f.type}`}>{f.type.replace("_", " ")}</span> {f.detail.slice(0, 110)} <span className="muted">→ {f.next}</span></div>
@@ -274,7 +289,7 @@ export function Drawer({ view, sessionId, session }: { view: View; sessionId: st
         </table>
       )}
       {tab === "contract" && <ContractTab sessionId={sessionId} port={view.port} />}
-      {tab === "archivist" && <ArchivistPanel view={view} />}
+      {tab === "archivist" && <ArchivistPanel view={view} sessionId={sessionId} />}
       {tab === "agents" && <AgentsPanel view={view} session={session} />}
       {tab === "report" && report && (
         <div className="report">

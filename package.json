@@ -28,7 +28,8 @@
     "security-sanity": "tsx scripts/security-sanity.ts",
     "contract": "tsx scripts/contract.ts",
     "apply": "tsx scripts/apply.ts",
-    "contract-test": "vitest run out/contract.test.ts"
+    "contract-test": "vitest run out/contract.test.ts",
+    "audit": "tsx scripts/audit.ts"
   },
   "keywords": [],
   "author": "",

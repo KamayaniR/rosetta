@@ -100,3 +100,5 @@ button.primary { background: #1f6feb; border-color: #1f6feb; } button.on { backg
 @media (max-width: 1100px) { .summary { grid-template-columns: repeat(2, 1fr); } }
 button.danger { border-color: #f8514966; color: var(--red); } button.danger:hover { background: #f851491a; }
 .note.good { color: var(--green); } .note.bad { color: var(--red); }
+.audit { margin: 8px 0; padding: 8px; background: var(--panel2); border-radius: 8px; } .audit .chips { margin-top: 4px; }
+.t-quirk_mismatch, .t-tag_not_implemented, .t-disproven_rule, .t-unknown_rule { color: var(--red); } .t-unproven_rule { color: var(--yellow); } .t-untagged_code { color: var(--muted); }

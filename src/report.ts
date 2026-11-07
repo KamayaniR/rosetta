@@ -22,6 +22,7 @@ export async function buildReport(sessionId: string) {
   const findings = await store.find<any>("archivist_findings", { sessionId });
   const [security] = await store.find<any>("security_reports", { sessionId }, { sort: { createdAt: -1 }, limit: 1 });
   const [contract] = await store.find<any>("contracts", { sessionId }, { sort: { createdAt: -1 }, limit: 1 });
+  const [audit] = await store.find<any>("port_audits", { sessionId }, { sort: { createdAt: -1 }, limit: 1 });
 
   const count = (xs: { status: string }[]) => xs.reduce<Record<string, number>>((m, h) => ((m[h.status] = (m[h.status] ?? 0) + 1), m), {});
   const byArch = hyps.filter((h) => h.source === "archivist");
@@ -66,6 +67,7 @@ export async function buildReport(sessionId: string) {
       findings: security.findings, crashesOrHangs: security.crashes, dangerousCapabilityUses: security.dangerous,
       redos: security.sweeps.map((x: any) => ({ regex: x.regex.slice(0, 60), unit: x.pattern.unit, flagged: x.flagged, reason: x.reason, points: x.points.map((p: any) => [p.length, Number(p.medianMs.toFixed(3)), p.outcome]) })),
     } : null,
+    portAudit: audit ? { portVersion: audit.portVersion, taggedLines: audit.taggedLines, rulesCheckedBySubQ: audit.rulesChecked, counts: audit.counts } : null,
     contract: contract ? { portVersion: contract.portVersion, ruleGroups: contract.rules.length, quirkTests: contract.quirks.length, snapshot: contract.snapshot.length, fixes: contract.quirks.filter((q: any) => q.decision === "fix").map((q: any) => ({ hid: q.hid, fixSpec: q.fixSpec, predicate: !!q.fixPredicate })) } : null,
     intentionalDivergences: verify ? { fuzz: verify.fuzz.divergences ?? null, heldout: verify.heldout.divergences ?? null, security: quirks.filter((q: any) => q.decision === "fix" && q.security).map((q) => q.hid) } : null,
     verify: verify && { fuzz: verify.fuzz, properties: verify.properties ?? null, heldout: verify.heldout, mismatches: verify.mismatches.length, feedbackBlocked: verify.feedbackBlocked },

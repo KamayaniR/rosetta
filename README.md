@@ -85,7 +85,7 @@ Each quirk card shows the rule, why it is surprising, real example runs and a su
 
 ### 2b. Challenge a rule, live
 ![Challenge](docs/screenshots/13-challenge.png)
-Every rule card has a **Challenge** button (live mode). It runs one targeted experiment round on just that rule. Here, challenging **H49** ("long format uses a 1.5× plural threshold for hours"): Muse Spark designed 7 new inputs right at the boundary (`f(5399999, {long:true})` → `"1 hour"`, `f(5400000)` → `"2 hours"`, `f(5400001)` → `"2 hours"`, runs R0471–R0477 at the top of Trace), and the rule **held** ("challenged, held: 7 predictions"). A rule that breaks under a challenge is disproven, with the counterexample. **Stop session** in the top bar stops a running session in either orchestrator: running steps finish, and no new step starts.
+Every rule card has a **Challenge** button (live mode). It runs one targeted experiment round on just that rule. Here, challenging **H49** ("long format uses a 1.5× plural threshold for hours"): Muse Spark designed 7 new inputs right at the boundary (`f(5399999, {long:true})` → `"1 hour"`, `f(5400000)` → `"2 hours"`, `f(5400001)` → `"2 hours"`, runs R0471–R0477 at the top of Trace), and the rule **held** ("challenged, held: 7 predictions"). A rule that breaks under a challenge is disproven with the counterexample, and the Theorist immediately proposes a corrected rule, which is tested in the same request. Example: H52's predicate said every `.Nm` string returns 30000 (it had generalized from its one example `.5m`); a challenge ran `.1m` → 6000, `.25m` → 15000, `.0m` → 0 and disproved it. The behavior was fine; the rule was overfitted, which is exactly what a challenge should catch. **Stop session** in the top bar stops a running session in either orchestrator: running steps finish, and no new step starts.
 
 ### 3. Verify: equivalence, held-out, properties, divergences, conflicts, security
 ![Verify](docs/screenshots/03-verify.png)
@@ -99,6 +99,9 @@ Every rule card has a **Challenge** button (live mode). It runs one targeted exp
 ### 4. Archivist (Subquadratic SubQ): what the summaries miss
 ![Archivist](docs/screenshots/04-archivist.png)
 One SubQ request per round sees the **whole bundle plus the full uncompressed history** (every run, every rule with its history, the quirks): ~70k tokens vs the Theorist's ~8.5k. It reports never-executed code, untested input categories and thin-evidence rules, each with what happened next (a hypothesis was requested, or a challenge queued).
+
+### 4b. Final audit (Archivist Job 3), right before the contract
+Every `@rule` / `@quirk` tagged line of the port is checked mechanically: it must cite a rule that exists, is proven (not just inferred or disproven), was executed by a real run, and whose quirk tag matches the Quirk Court decision; executable lines with no tag are listed. Then **one SubQ request** (the whole port plus the full ledger, ~10.8k tokens) answers, for each tagged rule, *"do the lines tagged with it actually implement it?"* On session A's latest port it found the port still citing **H52, which a live Challenge had just disproven**, and **3 tags on code that doesn't implement the rule**. Shown in the Archivist tab and the report (`GET /sessions/:id/port-audit`, `npm run audit -- --session <id>`).
 
 ### 5. Agents (Fetch.ai): every claim signed by the agent that made it
 ![Agents](docs/screenshots/05-agents-signed.png)

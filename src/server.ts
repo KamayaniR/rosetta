@@ -126,6 +126,12 @@ app.post<{ Params: { id: string } }>("/sessions/:id/apply-decisions", async (req
   return { ok: true };
 });
 
+app.get<{ Params: { id: string } }>("/sessions/:id/port-audit", async (req) => {
+  const [a] = await (await getStore()).find<any>("port_audits", { sessionId: req.params.id }, { sort: { createdAt: -1 }, limit: 1 });
+  return a ?? null;
+});
+app.post<{ Params: { id: string } }>("/sessions/:id/port-audit", async (req) => (await import("./audit.ts")).auditPort(req.params.id));
+
 app.get<{ Params: { id: string } }>("/sessions/:id/contract", async (req) => (await latestContract(req.params.id)) ?? buildContract(req.params.id));
 app.get<{ Params: { id: string } }>("/sessions/:id/contract.test.ts", async (req, reply) => {
   const c = (await latestContract(req.params.id)) ?? (await buildContract(req.params.id));
@@ -155,10 +161,23 @@ app.post<{ Params: { hid: string }; Body: { sessionId: string } }>("/hypotheses/
   const round = last + 1;
   await setChallenge(h, { by: "human", reason: "challenge", round });
   await emit(sessionId, "challenge_started", { hid: h.hid, round });
-  experimentRound(withDefaults({ sessionId, only: [h.hid], log: (s) => console.log(`[${sessionId}] ${s}`) }), round)
+  const L = (s: string) => console.log(`[${sessionId}] ${s}`);
+  experimentRound(withDefaults({ sessionId, only: [h.hid], log: L }), round)
     .then(async (r) => {
       const [after] = await store.find<any>("hypotheses", { sessionId, hid: h.hid });
-      await emit(sessionId, "challenge_done", { hid: h.hid, round, before: h.status, after: after?.status, ran: r.ran, note: after?.history?.at(-1)?.note });
+      let revision: { hid: string; status: string; claim: string } | null = null;
+      // disproven by the challenge -> the Theorist proposes a corrected rule, which is tested immediately
+      if (after?.status === "disproven") {
+        const { safeHypothesize } = await import("./loop.ts");
+        const created = await safeHypothesize(withDefaults({ sessionId, log: L }), round + 1);
+        const rev = created.filter((x: any) => x.revises === h.hid && x.status !== "disproven");
+        if (rev.length) {
+          await experimentRound(withDefaults({ sessionId, only: rev.map((x: any) => x.hid), log: L }), round + 1);
+          const [rv] = await store.find<any>("hypotheses", { sessionId, hid: rev[0].hid });
+          revision = { hid: rv.hid, status: rv.status, claim: rv.claim };
+        }
+      }
+      await emit(sessionId, "challenge_done", { hid: h.hid, round, before: h.status, after: after?.status, ran: r.ran, note: after?.history?.at(-1)?.note, revision });
     })
     .catch((e) => emit(sessionId, "agent_error", { agent: "theorist", step: "challenge", error: String(e?.message ?? e) }));
   return { ok: true, round };

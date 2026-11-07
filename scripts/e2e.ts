@@ -49,6 +49,8 @@ phase("security pass");
 const { securityPass } = await import("../src/security.ts");
 const sec = await securityPass(sessionId);
 console.log(`  ${sec.findings.length} security findings; ${sec.sweeps.map((s) => s.reason).join(" | ")}`);
+phase("final audit (Archivist Job 3)");
+await (await import("../src/audit.ts")).auditPort(sessionId);
 phase("contract");
 const { buildContract, runContract } = await import("../src/contract.ts");
 const contract = await buildContract(sessionId);
