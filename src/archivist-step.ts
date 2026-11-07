@@ -14,7 +14,8 @@ export async function archivistStep(sessionId: string, round: number, log: (s: s
   try {
     const store = await getStore();
     const obs = await store.find<Observation>("observations", { sessionId });
-    const seen = new Set((await store.find<Finding>("archivist_findings", { sessionId })).map(key));
+    // "seen" = findings already ACTED on in an earlier step (reported-only findings are acted on now)
+    const seen = new Set((await store.find<Finding>("archivist_findings", { sessionId, acted: true })).map(key));
     const features = await mapBundle(sessionId, obs);
     const { findings, stats } = await review(sessionId, round, features);
     const fresh = findings.filter((f) => !seen.has(key(f)));
@@ -42,6 +43,9 @@ export async function archivistStep(sessionId: string, round: number, log: (s: s
       log(`  archivist -> +${created.length} hypotheses (found by Archivist): ${created.map((h) => h.hid).join(", ")}`);
       await emit(sessionId, "archivist_hypotheses", { round, hids: created.map((h) => h.hid), fromFindings: gaps.length });
       acted += created.length;
+    }
+    for (const f of fresh) {
+      await store.updateOne("archivist_findings", { sessionId, round, type: f.type, ...(f.fid ? { fid: f.fid } : {}), ...(f.hid ? { hid: f.hid } : {}), ...(f.category ? { category: f.category } : {}) }, { acted: true });
     }
     return acted;
   } catch (e: any) {

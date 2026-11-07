@@ -22,6 +22,7 @@ export type FindingType = "never_tested" | "unexplained" | "thin_evidence" | "co
 export type Finding = {
   sessionId: string; round: number; type: FindingType; fid?: string; hid?: string; category?: string;
   detail: string; probability: number; runIds: string[]; next: string; createdAt: Date;
+  acted: boolean; // true once the Archivist step turned it into a hypothesis or challenge
 };
 
 /** §10a input categories the Archivist checks for coverage. */
@@ -147,7 +148,7 @@ export async function review(sessionId: string, round: number, features: Feature
   const A = r.answers;
   const now = new Date();
   const findings: Finding[] = [];
-  const add = (f: Omit<Finding, "sessionId" | "round" | "createdAt">) => findings.push({ ...f, sessionId, round, createdAt: now });
+  const add = (f: Omit<Finding, "sessionId" | "round" | "createdAt" | "acted">) => findings.push({ ...f, sessionId, round, createdAt: now, acted: false });
 
   for (const f of features) {
     const a = A[`explain_${f.fid}`];
