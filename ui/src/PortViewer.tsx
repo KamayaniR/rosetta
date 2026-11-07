@@ -18,7 +18,8 @@ export function lineColor(view: View, line: { hids: string[]; executed?: boolean
 }
 
 export function PortViewer({ view, selected, onSelect }: { view: View; selected: string[]; onSelect: (h: string[]) => void }) {
-  const [version, setVersion] = useState<number | null>(null);
+  // ?port=N opens a specific port version (e.g. the Meta-written one) for links / screenshots
+  const [version, setVersion] = useState<number | null>(() => { const v = new URLSearchParams(location.search).get("port"); return v ? Number(v) : null; });
   const ports = view.ports.filter((p: any) => p.compileOk);
   const port = ports.find((p: any) => p.version === version) ?? view.port;
   const edRef = useRef<Ed | null>(null);

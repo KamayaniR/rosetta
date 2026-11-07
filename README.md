@@ -5,7 +5,7 @@
 AIE Code Summit Hackathon · Nov 7 2026 · Track: **Software Archaeology** · Solo build · Repo: https://github.com/KamayaniR/rosetta
 
 ![Rosetta home](docs/screenshots/00-home.png)
-*The home screen for a real session started from ASI:One and run by the Fetch.ai agents: 443 runs of the minified original, 36 proven rules (every one signed by the agent that made it), a TypeScript port by Meta Muse Spark with each line colored by its evidence, 100% on a held-out set no agent ever saw, and 17 rules found only by the SubQ Archivist. Each button opens one section.*
+*The home screen for a real session started from ASI:One and run by the Fetch.ai agents: 449 runs of the minified original, 35 proven rules (every one signed by the agent that made it), a TypeScript port by Meta Muse Spark with each line colored by its evidence, 100% on a held-out set no agent ever saw, and 17 rules found only by the SubQ Archivist. Each button opens one section.*
 
 ---
 
@@ -52,11 +52,11 @@ Two real sessions from today, read straight from the stored reports:
 | | **Session A**: started from **ASI:One**, run by **signed Fetch.ai agents** (`s_20261107222044_b7b2`) | **Session B**: main demo, with a Quirk Court **Fix** applied (`s_20261107212548_b7e9`) |
 |---|---|---|
 | Runs of the minified original | 443 | 470 |
-| Rules **proven** / inferred / disproven | **36** / 5 / 15 | **39** / 4 / 12 |
+| Rules **proven** / inferred / disproven | **35** / 5 / 16 (one disproven by a live Challenge) | **39** / 4 / 12 |
 | Rules found **only by the Archivist** (SubQ) | 17 | 18 |
 | Archivist context vs Theorist context | **70,758 vs 8,537 tokens (8.3×)** | **70,887 vs 8,857 tokens (8.0×)** |
 | Port written by | **Meta Muse Spark** (`muse-spark-1.1`) | **Meta Muse Spark** |
-| Port agreement with all observations | 436/436 + 7 intentional (Fix H3, decided in ASI:One) | **448/448** + 22 intentional (Fix H25) |
+| Port agreement with all observations | v2 by Muse Spark: 436/436 + 7 intentional (Fix H3, decided in ASI:One) | **448/448** + 22 intentional (Fix H25) |
 | Differential fuzz (fast-check) | **2000/2000** | **1759/1759** (+241 Fix-covered inputs checked against the fix) |
 | **Held-out** (500 inputs, fixed seed, never shown to any agent) | **100%** | **100%** |
 | Held-out, strict *unseen-only* subset | **463/463** | **400/400** |
@@ -88,6 +88,7 @@ Each quirk card shows the rule, why it is surprising, real example runs and a su
 
 ### 2b. Challenge a rule, live
 ![Challenge](docs/screenshots/13-challenge.png)
+*Session A: the H52 card shows a live Challenge that disproved it; its six challenge runs (`.1m`, `.9m`, `.25m`, `.0m`, …) are at the top of Trace.*
 Every rule card has a **Challenge** button (live mode). It runs one targeted experiment round on just that rule. Here, challenging **H49** ("long format uses a 1.5× plural threshold for hours"): Muse Spark designed 7 new inputs right at the boundary (`f(5399999, {long:true})` → `"1 hour"`, `f(5400000)` → `"2 hours"`, `f(5400001)` → `"2 hours"`, runs R0471–R0477 at the top of Trace), and the rule **held** ("challenged, held: 7 predictions"). A rule that breaks under a challenge is disproven with the counterexample, and the Theorist immediately proposes a corrected rule, which is tested in the same request. Example: H52's predicate said every `.Nm` string returns 30000 (it had generalized from its one example `.5m`); a challenge ran `.1m` → 6000, `.25m` → 15000, `.0m` → 0 and disproved it. The behavior was fine; the rule was overfitted, which is exactly what a challenge should catch. **Stop session** in the top bar stops a running session in either orchestrator: running steps finish, and no new step starts.
 
 ### 3. Verify: equivalence, held-out, properties, divergences, conflicts, security
