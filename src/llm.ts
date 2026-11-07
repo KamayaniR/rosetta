@@ -31,6 +31,9 @@ export const isDecisionModel = (p: Provider) => p === "subq" && /snap/.test(MODE
 
 const META_CALL_CAP = Number(process.env.META_CALL_CAP ?? 150);
 const MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS ?? 16384);
+// The Builder writes a whole file and Muse Spark spends output tokens on reasoning first, so it gets a larger cap.
+const AGENT_MAX_TOKENS: Partial<Record<Agent, number>> = { builder: Number(process.env.BUILDER_MAX_TOKENS ?? 32768) };
+let currentMaxTokens = MAX_TOKENS;
 const CALL_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 120_000);
 
 /** Output hit the token cap: don't retry the same provider (it would run away again). */
@@ -49,10 +52,10 @@ async function callProvider(p: Provider, system: string, user: string, temperatu
     const r = await meta.chat.completions.create({
       model: MODELS.meta,
       temperature,
-      max_tokens: MAX_TOKENS,
+      max_tokens: currentMaxTokens,
       messages: [{ role: "system", content: system }, { role: "user", content: user }],
     });
-    if (r.choices[0]?.finish_reason === "length") throw new TruncatedError(`meta output hit ${MAX_TOKENS} token cap`);
+    if (r.choices[0]?.finish_reason === "length") throw new TruncatedError(`meta output hit ${currentMaxTokens} token cap`);
     return {
       text: r.choices[0]?.message?.content ?? "",
       inputTokens: r.usage?.prompt_tokens ?? 0,
@@ -119,6 +122,7 @@ export async function call<T>(
   ctx: { sessionId: string; temperature?: number },
 ): Promise<LlmResult<T>> {
   const json = typeof schema !== "function";
+  currentMaxTokens = AGENT_MAX_TOKENS[agent] ?? MAX_TOKENS;
   let provider = ROUTES[agent];
   const temperature = ctx.temperature ?? 0.2;
 

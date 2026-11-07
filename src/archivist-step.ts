@@ -14,19 +14,24 @@ export async function archivistStep(sessionId: string, round: number, log: (s: s
   try {
     const store = await getStore();
     const obs = await store.find<Observation>("observations", { sessionId });
-    // "seen" = findings already ACTED on in an earlier step (reported-only findings are acted on now)
-    const seen = new Set((await store.find<Finding>("archivist_findings", { sessionId, acted: true })).map(key));
+    // A finding is acted on when first seen; if it is STILL open 2+ rounds after the last attempt, it is re-requested,
+    // at most MAX_ATTEMPTS times in total (so persistent gaps get another try but never loop forever).
+    const MAX_ATTEMPTS = 2;
+    const acted = await store.find<Finding>("archivist_findings", { sessionId, acted: true });
+    const attempts = new Map<string, { n: number; last: number }>();
+    for (const f of acted) { const a = attempts.get(key(f)) ?? { n: 0, last: -1 }; attempts.set(key(f), { n: a.n + 1, last: Math.max(a.last, f.round) }); }
+    const isNew = (f: Finding) => { const a = attempts.get(key(f)); return !a || (a.n < MAX_ATTEMPTS && round - a.last >= 2); };
     const features = await mapBundle(sessionId, obs);
     const { findings, stats } = await review(sessionId, round, features);
-    const fresh = findings.filter((f) => !seen.has(key(f)));
+    const fresh = findings.filter(isNew);
     log(`  archivist (${stats.model}): ${stats.archivistTokens} tok full history vs theorist ${stats.theoristTokens} tok; ${findings.length} findings, ${fresh.length} new ${JSON.stringify(stats.byType)}`);
     if (!fresh.length) return 0;
 
-    let acted = 0;
+    let actedCount = 0;
     const hyps = await listHypotheses(sessionId);
     for (const f of fresh.filter((x) => x.hid && (x.type === "thin_evidence" || x.type === "contradiction"))) {
       const h = hyps.find((x) => x.hid === f.hid);
-      if (h && h.status === "proven" && !h.challenge) { await setChallenge(h, { by: "archivist", reason: f.type, round }); acted++; }
+      if (h && h.status === "proven" && !h.challenge) { await setChallenge(h, { by: "archivist", reason: f.type, round }); actedCount++; }
     }
     const gaps = fresh.filter((x) => x.type === "never_tested" || x.type === "untested_category" || x.type === "unexplained");
     if (gaps.length) {
@@ -42,12 +47,12 @@ export async function archivistStep(sessionId: string, round: number, log: (s: s
       }
       log(`  archivist -> +${created.length} hypotheses (found by Archivist): ${created.map((h) => h.hid).join(", ")}`);
       await emit(sessionId, "archivist_hypotheses", { round, hids: created.map((h) => h.hid), fromFindings: gaps.length });
-      acted += created.length;
+      actedCount += created.length;
     }
     for (const f of fresh) {
       await store.updateOne("archivist_findings", { sessionId, round, type: f.type, ...(f.fid ? { fid: f.fid } : {}), ...(f.hid ? { hid: f.hid } : {}), ...(f.category ? { category: f.category } : {}) }, { acted: true });
     }
-    return acted;
+    return actedCount;
   } catch (e: any) {
     log(`  archivist skipped: ${e?.message ?? e}`);
     await emit(sessionId, "agent_error", { agent: "archivist", error: String(e?.message ?? e) });

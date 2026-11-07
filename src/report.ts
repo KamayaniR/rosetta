@@ -21,6 +21,7 @@ export async function buildReport(sessionId: string) {
 
   const count = (xs: { status: string }[]) => xs.reduce<Record<string, number>>((m, h) => ((m[h.status] = (m[h.status] ?? 0) + 1), m), {});
   const byArch = hyps.filter((h) => h.source === "archivist");
+  const distinct = [...new Map(findings.map((f) => [`${f.type}:${f.fid ?? f.hid ?? f.category}`, f])).values()];
   const lastReview = reviews[reviews.length - 1];
   return {
     sessionId,
@@ -30,8 +31,10 @@ export async function buildReport(sessionId: string) {
     stillInferred: hyps.filter((h) => h.status === "inferred").map((h) => ({ hid: h.hid, claim: h.claim })),
     archivist: {
       hypotheses: byArch.length, ...Object.fromEntries(Object.entries(count(byArch)).map(([k, v]) => [`hypotheses_${k}`, v])),
-      findings: findings.length,
-      findingsByType: findings.reduce<Record<string, number>>((m, f) => ((m[f.type] = (m[f.type] ?? 0) + 1), m), {}),
+      // distinct findings over the session (same gap reported in several rounds counts once) + what is still open now
+      findings: distinct.length,
+      findingsByType: distinct.reduce<Record<string, number>>((m, f) => ((m[f.type] = (m[f.type] ?? 0) + 1), m), {}),
+      openNow: lastReview?.byType ?? {},
       reviews: reviews.length,
       lastContext: lastReview ? { archivistTokens: lastReview.archivistTokens, theoristTokens: lastReview.theoristTokens, ratio: lastReview.ratio } : null,
     },
