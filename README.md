@@ -49,7 +49,7 @@ AIE Code Summit Hackathon · Nov 7 2026 · Track: **Software Archaeology** · So
 
 Two real sessions from today, read straight from the stored reports:
 
-| | **Session A**: started from **ASI:One**, run by **signed Fetch.ai agents** (`s_20261107222044_b7b2`) | **Session B**: main demo, with a Quirk Court **Fix** applied (`s_20261107212548_b7e9`) |
+| | **Session A (the demo)**: started from **ASI:One**, run by **signed Fetch.ai agents** (`s_20261107222044_b7b2`) | **Session B**: CLI run with a Quirk Court **Fix** and a decision **conflict** (`s_20261107212548_b7e9`) |
 |---|---|---|
 | Runs of the minified original | 443 | 470 |
 | Rules **proven** / inferred / disproven | **35** / 5 / 16 (one disproven by a live Challenge) | **39** / 4 / 12 |
