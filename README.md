@@ -4,8 +4,8 @@
 
 AIE Code Summit Hackathon · Nov 7 2026 · Track: **Software Archaeology** · Solo build · Repo: https://github.com/KamayaniR/rosetta
 
-![Rosetta: a session run by signed Fetch.ai agents, started from ASI:One](docs/screenshots/01-overview.png)
-*A real session started from ASI:One and run by the Fetch.ai agents: 443 runs of the minified original, 36 proven rules (every one signed by the agent that made it), a TypeScript port by Meta Muse Spark with each line colored by its evidence, 100% on a held-out set no agent ever saw, and 17 rules found only by the SubQ Archivist.*
+![Rosetta home](docs/screenshots/00-home.png)
+*The home screen for a real session started from ASI:One and run by the Fetch.ai agents: 443 runs of the minified original, 36 proven rules (every one signed by the agent that made it), a TypeScript port by Meta Muse Spark with each line colored by its evidence, 100% on a held-out set no agent ever saw, and 17 rules found only by the SubQ Archivist. Each button opens one section.*
 
 ---
 
@@ -72,12 +72,15 @@ Two real sessions from today, read straight from the stored reports:
 <a name="walkthrough"></a>
 ## Walkthrough with screenshots
 
-### 1. The evidence ledger and the port, colored by evidence
-![Overview](docs/screenshots/01-overview.png)
-- **Left, Trace:** every run of the minified original (inputs, outputs, source, round). Clicking a rule highlights the runs it cites.
-- **Center, the TypeScript port:** each tagged line is **green** if all its rules are proven *and* a real run executed it, **yellow** if a rule is only inferred or the line never ran, **red** if a rule was disproven. Purple marks are quirk lines. Hover a line to see its rules and how many runs executed it.
-- **Right, the evidence ledger:** status, confidence, evidence count, **"signed by theorist ✓"** badges, and **"found by Archivist"** badges.
-- **Top strip:** the headline numbers, all computed from stored data.
+The web UI has a home screen (big wordmark, headline numbers, one button per section) and then shows **one section at a time**, with colored navigation pills, live mode or replay with a scrubber, and shareable links (`?session=<id>&view=<section>&mode=replay`).
+
+### 1. Evidence and the port, colored by evidence
+![Evidence](docs/screenshots/01-overview.png)
+![Port](docs/screenshots/01b-port.png)
+- **Evidence, left, Trace:** every run of the minified original (inputs, outputs, source, round). Clicking a rule highlights the runs it cites.
+- **Port page:** the TypeScript port in a code editor; each tagged line is **green** if all its rules are proven *and* a real run executed it, **yellow** if a rule is only inferred or the line never ran, **red** if a rule was disproven. Purple marks are quirk lines. Hover a line to see its rules and how many runs executed it.
+- **Evidence, right, the ledger:** status, confidence, evidence count, **"signed by theorist ✓"** badges, and **"found by Archivist"** badges.
+- **Top strip on every page:** the headline numbers, all computed from stored data.
 
 ### 2. Quirk Court: a human decides
 ![Quirk Court](docs/screenshots/02-quirk-court.png)
@@ -222,7 +225,7 @@ agents/.venv/bin/python agents/bureau.py     # Fetch.ai agents (optional; otherw
 agents/.venv/bin/python agents/service.py    # public `rosetta` agent on Agentverse / ASI:One (optional)
 ```
 
-- **Web UI:** open `http://localhost:8787` and click **Start session** (~12 min). Replay any finished session with `http://localhost:8787/?session=<id>&mode=replay`; add `&tab=agents|archivist|contract|history|report|reveal` or `&right=court` to open a view directly, and `&tab=contract&edit=plural` to load and run the sneaky AI edit.
+- **Web UI:** open `http://localhost:8787` and click **Start session** (~12 min). Replay any finished session with `http://localhost:8787/?session=<id>&mode=replay`; add `&view=evidence|port|court|verify|archivist|agents|contract|history|report|reveal` to open a section directly, and `&view=contract&edit=plural` to load and run the sneaky AI edit.
 - **ASI:One:** message `@agent1q0j9cd9fn0krw3q87h4djuhgpy49nglx2ltwkpz43l2vuwqy0xnxc7q65f5 demo` (or paste a JS module). Then `status` for a progress card, `quirks` for the Quirk Court cards, and type `fix H3: <intended behavior>` or use the Fix form.
 - **CLI:** `npm run e2e` runs the whole pipeline in a fresh session (~12 min) and writes `out/ms.port.ts`, `out/contract.test.ts` and `out/report.json`. Then run `npx vitest run out/contract.test.ts`.
 

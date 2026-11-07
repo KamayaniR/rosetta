@@ -43,7 +43,7 @@ export function PortViewer({ view, selected, onSelect }: { view: View; selected:
           isWholeLine: true,
           className: `ln-${color}${sel ? " ln-sel" : ""}`,
           glyphMarginClassName: l.quirks?.length ? "glyph-quirk" : undefined,
-          overviewRuler: { color: color === "green" ? "#3fb950" : color === "red" ? "#f85149" : "#d29922", position: 1 },
+          overviewRuler: { color: color === "green" ? "#16a34a" : color === "red" ? "#dc2626" : "#d97706", position: 1 },
         },
       };
     });
@@ -97,7 +97,7 @@ export function PortViewer({ view, selected, onSelect }: { view: View; selected:
             {port.agreement && <span className="muted"> · agreement {port.agreement.equal}/{port.agreement.total}{port.agreement.intentional ? ` + ${port.agreement.intentional} intentional (Fix ${Object.keys(port.agreement.intentionalByHid ?? {}).join(", ")})` : ""}</span>}
           </div>
           <div className="editor">
-            <Editor height="100%" theme="vs-dark" language="typescript" value={port.code} onMount={onMount}
+            <Editor height="100%" theme="vs" language="typescript" value={port.code} onMount={onMount}
               options={{ readOnly: true, minimap: { enabled: false }, fontSize: 12, glyphMargin: true, scrollBeyondLastLine: false, fontFamily: "JetBrains Mono, monospace" }} />
           </div>
         </>

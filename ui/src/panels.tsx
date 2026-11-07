@@ -234,12 +234,13 @@ export function ArchivistPanel({ view, sessionId }: { view: View; sessionId?: st
 }
 
 // ---------- Bottom drawer: verify / port history / report / reveal ----------
-export function Drawer({ view, sessionId, session }: { view: View; sessionId: string; session: any }) {
-  const [tab, setTab] = useState(() => new URLSearchParams(location.search).get("tab") ?? "verify");
+export function Drawer({ view, sessionId, session, tab: forced, hideTabs }: { view: View; sessionId: string; session: any; tab?: string; hideTabs?: boolean }) {
+  const [tabState, setTab] = useState(() => new URLSearchParams(location.search).get("tab") ?? "verify");
+  const tab = forced ?? tabState;
   const [report, setReport] = useState<any>(null);
   const [reveal, setReveal] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { if (tab === "report" || tab === "reveal") load(tab); }, []); // eslint-disable-line
+  useEffect(() => { if (tab === "report" || tab === "reveal") load(tab); }, [tab]); // eslint-disable-line
   const v = view.verify;
   const pct = (x?: number) => (x === undefined ? "–" : `${(x * 100).toFixed(1)}%`);
   const load = async (t: string) => {
@@ -251,7 +252,7 @@ export function Drawer({ view, sessionId, session }: { view: View; sessionId: st
   };
   return (
     <div className="panel drawer">
-      <div className="tabs">
+      <div className="tabs" style={hideTabs ? { display: "none" } : undefined}>
         {[["verify", "Verify"], ["archivist", "Archivist · SubQ"], ["agents", "Agents · Fetch.ai"], ["contract", "Contract"], ["history", "Port history"], ["report", "Report"], ["reveal", "Reveal"]].map(([t, label]) =>
           <button key={t} className={tab === t ? "on" : ""} disabled={t === "reveal" && !view.done} onClick={() => load(t)}>{label}</button>)}
       </div>
