@@ -115,12 +115,12 @@ Every port version with its model, compile result, agreement mismatches, never-e
 ![Reveal](docs/screenshots/09-reveal.png)
 The original `ms` source is behind a path allowlist the agents cannot pass; only this endpoint reads it, and only after the session ends.
 
-### 10. ASI:One chat with interactive cards
-| Progress card | Quirk Court cards (Preserve / Fix / Flag) | Fix form |
+### 10. ASI:One chat with interactive cards (tested live)
+| Progress card | Quirk Court cards (Preserve / Fix / Flag) | Report card |
 |---|---|---|
-| ![](docs/screenshots/10-asi-progress-card.png) | ![](docs/screenshots/11-asi-quirk-cards.png) | ![](docs/screenshots/12-asi-fix-form.png) |
+| ![](docs/screenshots/10-asi-progress-card.png) | ![](docs/screenshots/11-asi-quirk-cards.png) | ![](docs/screenshots/12-asi-report-card.png) |
 
-Message `@rosetta demo` (or paste any JS module), then `status` and `quirks`. Decisions made in chat go to the same database as the web UI (H3 = fix in session A was decided in ASI:One).
+The whole session A was started from ASI:One: `@rosetta demo` → "Session started" → `status` returns a **progress card** (phase, rules proven, held-out match, Open live session) → `quirks` returns one **Quirk Court card** per quirk with the rule, why it's surprising, real example runs, a suggested fix and **Preserve / Fix / Flag** → **Fix** opens a one-line **form** (or type `fix H3: <intended behavior>`) → the final **report card** shows 36 rules proven, the decisions (H3 = fix, decided in chat), 100% held-out (500/500), intentional divergences, and **Download port / View contract / Open session**. Decisions made in chat go to the same `quirks` collection as the web UI, and the rebuilt port implements them.
 
 ---
 
