@@ -74,7 +74,6 @@ Ground truth (`ground_truth/ms.original.js`) is behind a path allowlist (`src/sa
 | **Subquadratic SubQ** (`subq-snap-1.1`, Decisions API) | The Archivist: one request with the full bundle + full history (~150 typed questions) every round; measured context vs the Theorist's is reported in the UI. `ROUTES.archivist = "subq"`; `SUBQ_MODEL=subq-preview` switches to the generative model if access is granted |
 | **MongoDB Atlas** | Every observation, rule (with status history), port version, verify report, contract, finding, signed provenance record and event; Replay is rebuilt from stored events (in-memory fallback if unreachable) |
 | **Fetch.ai** | Coordinator, Tracer, Theorist, Archivist, Builder, Skeptic as uAgents with stable identities; every step request and message is signed (secp256k1) and **verified by the backend before any write** (wrong signer, tampered payload or unknown agent → rejected); `rosetta` is a public chat agent on Agentverse with ASI:One interactive cards (progress, Quirk/Security with Preserve/Fix/Flag, Fix form, report) |
-| **Google Cloud** | Cloud Run deployment (see Status) |
 
 ## Run it
 
@@ -103,6 +102,7 @@ Checks: `npm run guard` (ground-truth allowlist) · `npm run sandbox-test` (hang
 - A handful of rules stay `inferred` each run; they are listed in the report, never claimed as proven. Coverage is reported, never 100% by assumption.
 - The Skeptic's Fix predicates can be wrong (one over-widened `expr` predicate wrongly failed a correct port); the `transform` form exists because of that, and conflicts between decisions are reported rather than resolved silently.
 - SubQ: our key only allows the Snap Decisions model, so the Archivist maps the bundle mechanically and uses SubQ to judge it, rather than generating text.
+- Not deployed: the demo runs from a laptop (Cloud Run was cut per the plan's cut order); the ASI:One "Live view" link is local.
 - Not built: Challenge button / pause-resume endpoints, the Archivist A/B run and large-bundle scale demo, deciding experiments for conflicting rules.
 
 ## What was built today (disclosure)
