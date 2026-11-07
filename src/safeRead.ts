@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve, relative, sep } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const ALLOWED = ["target", "out", "data"].map((d) => resolve(ROOT, d));
+const ALLOWED = ["target", "targets", "out", "data"].map((d) => resolve(ROOT, d));
 const FORBIDDEN = resolve(ROOT, "ground_truth");
 
 export class ForbiddenPathError extends Error {
