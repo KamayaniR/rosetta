@@ -220,7 +220,9 @@ async def collect_updates(ctx: Context, st: dict, force_progress: bool = False, 
     obs = {o["runId"]: o for o in s.get("observations", [])}
     st["quirks"] = s.get("quirks", [])
     for q in st["quirks"]:
-        if q["hid"] in st["shown_quirks"] and not all_quirks:
+        # "status" only brings pending quirks not shown yet; decided ones (e.g. H3 = fix) are not repeated.
+        # "quirks" shows all of them, each with its current decision.
+        if not all_quirks and (q["hid"] in st["shown_quirks"] or q.get("decision", "pending") != "pending"):
             continue
         st["shown_quirks"].add(q["hid"])
         hyp = next((h for h in s.get("hypotheses", []) if h["hid"] == q["hid"]), {})
