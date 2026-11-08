@@ -2,7 +2,7 @@
 
 Rosetta helps teams migrate legacy code that nobody understands any more. It works out what an undocumented JavaScript module does by running it, lets a person decide which odd behaviors to keep, ports it to TypeScript, checks that the port behaves the same, and turns the result into a test suite that future changes must pass.
 
-🥈 **2nd Place, Best Use of Subquadratic** ($1,000 cash + 1,000 Subquadratic API credits)
+🥈 **2nd Place, Best Use of Subquadratic** 
 
 AIE Code Summit Hackathon, Nov 7 2026. Track: Software Archaeology. Solo build. Repo: https://github.com/KamayaniR/rosetta
 
