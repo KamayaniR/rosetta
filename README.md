@@ -6,6 +6,8 @@ Rosetta helps teams migrate legacy code that nobody understands any more. It wor
 
 AIE Code Summit Hackathon, Nov 7 2026. Track: Software Archaeology. Solo build. Repo: https://github.com/KamayaniR/rosetta
 
+![Rosetta home](docs/screenshots/00-home.png)
+*Home screen for session A, which was started from ASI:One and run by the Fetch.ai agents.*
 
 ## Contents
 1. [Problem](#problem)
