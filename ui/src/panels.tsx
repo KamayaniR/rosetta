@@ -70,7 +70,7 @@ export function HypothesesPanel({ view, selected, onSelect, sessionId, live }: {
             <div className="meta">
               <div className="conf"><div style={{ width: `${Math.round(h.confidence * 100)}%` }} /></div>
               <span>{h.confidence.toFixed(2)}</span><span>{h.evidence.length} runs</span>
-              {h.signerName ? <span className={`sig ${h.verified === true ? "ok" : "bad"}`}>signed by {h.signerName} {h.verified === true ? "✓" : "✗"}</span> : <span className="sig gray">unsigned</span>}
+              {h.signerName ? <span className={`sig ${h.verified === true ? "ok" : "bad"}`}>signed by {h.signerName} {h.verified === true ? "(verified)" : "(not verified)"}</span> : <span className="sig gray">unsigned</span>}
             </div>
             {h.status === "disproven" && <div className="note">{h.history[h.history.length - 1]?.note}</div>}
             {(() => { const d = view.challenges.filter((c) => c.hid === h.hid && c.state === "done").pop(); return d ? <div className={`note ${d.after === "disproven" ? "bad" : "good"}`}>Challenge (round {d.round}): {d.before} → {d.after}, {d.ran} new runs{d.note ? ` · ${d.note}` : ""}{d.revision ? <div className="good">Revised as {d.revision.hid} ({d.revision.status}): {d.revision.claim}</div> : null}</div> : null; })()}
@@ -185,7 +185,7 @@ export function AgentsPanel({ view, session }: { view: View; session: any }) {
           {msgs.length === 0 && <div className="muted small">No agent messages{fetchMode ? " yet" : ": this session ran on the Node orchestrator"}.</div>}
           {[...msgs].reverse().slice(0, 60).map((m) => (
             <div key={m.msgId + m.type} className="msg">
-              <span className={`sig ${m.verified === true ? "ok" : m.verified === "tampered" ? "bad" : "gray"}`}>{m.verified === true ? "signed ✓" : m.verified === "tampered" ? "tampered" : String(m.verified)}</span>
+              <span className={`sig ${m.verified === true ? "ok" : m.verified === "tampered" ? "bad" : "gray"}`}>{m.verified === true ? "signed, verified" : m.verified === "tampered" ? "tampered" : String(m.verified)}</span>
               <b>{m.fromName}</b> → {m.toName} <span className="mono">{m.type}</span>
               <span className="muted"> {m.summary?.slice(0, 70)}</span>
               <span className="addr mono">{String(m.from).slice(0, 12)}…</span>

@@ -8,16 +8,16 @@ const PHASE_LABEL: Record<string, string> = { trace: "Trace", hypothesize: "Hypo
 
 type Section = "home" | "sponsors" | "evidence" | "port" | "court" | "verify" | "archivist" | "agents" | "contract" | "history" | "report" | "reveal";
 
-const SECTIONS: { id: Section; label: string; icon: string; color: string; blurb: string }[] = [
-  { id: "evidence", label: "Evidence", icon: "🔬", color: "indigo", blurb: "Every run of the minified code and the rules proven from them" },
-  { id: "port", label: "Port", icon: "🧩", color: "violet", blurb: "The TypeScript port, each line colored by its evidence" },
-  { id: "court", label: "Quirk Court", icon: "⚖️", color: "amber", blurb: "Surprising behaviors: Preserve, Fix or Flag" },
-  { id: "verify", label: "Verify", icon: "✅", color: "green", blurb: "Fuzzing, held-out set, properties, security" },
-  { id: "archivist", label: "Archivist · SubQ", icon: "📚", color: "teal", blurb: "Full-history review and the final audit" },
-  { id: "agents", label: "Agents · Fetch.ai", icon: "🤝", color: "blue", blurb: "Signed messages between the agents" },
-  { id: "contract", label: "Contract", icon: "🔒", color: "rose", blurb: "The test suite that blocks bad AI edits" },
-  { id: "report", label: "Report & Reveal", icon: "📜", color: "slate", blurb: "Final numbers and the original source" },
-  { id: "sponsors", label: "Sponsors", icon: "🏆", color: "pink", blurb: "What Meta, Fetch.ai, SubQ, Gemini and MongoDB do here, with numbers" },
+const SECTIONS: { id: Section; label: string; color: string; blurb: string }[] = [
+  { id: "evidence", label: "Evidence", color: "indigo", blurb: "Every run of the minified code and the rules proven from them" },
+  { id: "port", label: "Port", color: "violet", blurb: "The TypeScript port, each line colored by its evidence" },
+  { id: "court", label: "Quirk Court", color: "amber", blurb: "Surprising behaviors: Preserve, Fix or Flag" },
+  { id: "verify", label: "Verify", color: "green", blurb: "Fuzzing, held-out set, properties, security" },
+  { id: "archivist", label: "Archivist · SubQ", color: "teal", blurb: "Full-history review and the final audit" },
+  { id: "agents", label: "Agents · Fetch.ai", color: "blue", blurb: "Signed messages between the agents" },
+  { id: "contract", label: "Contract", color: "rose", blurb: "The test suite that blocks bad AI edits" },
+  { id: "report", label: "Report & Reveal", color: "slate", blurb: "Final numbers and the original source" },
+  { id: "sponsors", label: "Sponsors", color: "pink", blurb: "What Meta, Fetch.ai, SubQ, Gemini and MongoDB do here, with numbers" },
 ];
 // old ?tab= links (README, screenshots) map onto sections
 const TAB_TO_SECTION: Record<string, Section> = { verify: "verify", archivist: "archivist", agents: "agents", contract: "contract", history: "history", report: "report", reveal: "reveal" };
@@ -168,7 +168,6 @@ export function App() {
           <div className="tiles">
             {SECTIONS.map((s) => (
               <button key={s.id} className={`tile c-${s.color}`} disabled={!view} onClick={() => setSection(s.id)}>
-                <span className="ti">{s.icon}</span>
                 <span className="tl">{s.label}{s.id === "court" && pendingQuirks ? <span className="badge-n">{pendingQuirks}</span> : null}</span>
                 <span className="tb">{s.blurb}</span>
               </button>
@@ -187,7 +186,7 @@ export function App() {
       <header className="bar">
         <button className="logo-btn" onClick={() => setSection("home")} title="Home"><span className="mini-mark">Rosetta</span></button>
         <nav className="pills">
-          {SECTIONS.map((s) => <button key={s.id} className={`pill-btn c-${s.color} ${section === s.id || (s.id === "report" && section === "reveal") || (s.id === "port" && section === "history") ? "active" : ""}`} onClick={() => setSection(s.id)}>{s.icon} {s.label}</button>)}
+          {SECTIONS.map((s) => <button key={s.id} className={`pill-btn c-${s.color} ${section === s.id || (s.id === "report" && section === "reveal") || (s.id === "port" && section === "history") ? "active" : ""}`} onClick={() => setSection(s.id)}>{s.label}</button>)}
         </nav>
         <div className="bar-right">
           {sessionPicker}
@@ -200,7 +199,7 @@ export function App() {
         {stepper}
         {mode === "replay" && events.length > 0 && (
           <div className="replay">
-            <button onClick={() => setPlaying(!playing)}>{playing ? "❚❚" : "▶"}</button>
+            <button onClick={() => setPlaying(!playing)}>{playing ? "Pause" : "Play"}</button>
             <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>{[0.5, 1, 2, 4, 8].map((s) => <option key={s} value={s}>{s}×</option>)}</select>
             <input type="range" min={t0} max={t1} value={cursor} onChange={(e) => { setPlaying(false); setCursor(Number(e.target.value)); }} />
             <span className="mono muted">{Math.round((cursor - t0) / 1000)}s / {Math.round((t1 - t0) / 1000)}s</span>

@@ -5,10 +5,10 @@ import { getJSON } from "./timeline";
 const n = (x: number | null | undefined) => (x === null || x === undefined ? "–" : x.toLocaleString());
 const pct = (x: number | null | undefined) => (x === null || x === undefined ? "–" : `${(x * 100).toFixed(0)}%`);
 
-function Card({ color, logo, name, role, children }: { color: string; logo: string; name: string; role: string; children: React.ReactNode }) {
+function Card({ color, name, role, children }: { color: string; name: string; role: string; children: React.ReactNode }) {
   return (
     <div className={`sp-card c-${color}`}>
-      <div className="sp-head"><span className="sp-logo">{logo}</span><div><div className="sp-name">{name}</div><div className="sp-role">{role}</div></div></div>
+      <div className="sp-head"><div><div className="sp-name">{name}</div><div className="sp-role">{role}</div></div></div>
       {children}
     </div>
   );
@@ -25,7 +25,7 @@ export function Sponsors({ sessionId, onGo }: { sessionId: string; onGo: (s: any
   const firstTry = meta.ports.filter((p: any) => p.compileOk && p.attempts === 1).length;
   return (
     <div className="sponsors-grid">
-      <Card color="indigo" logo="Ⓜ" name="Meta Muse Spark" role="Theorist and Builder: the reasoning and the code">
+      <Card color="indigo" name="Meta Muse Spark" role="Theorist and Builder: the reasoning and the code">
         <div className="sp-bigs">
           <Big v={`${meta.rulesProven}/${meta.rulesProposed}`} l="rules it proposed that were proven" />
           <Big v={`${firstTry}/${meta.ports.length}`} l="ports it wrote that compiled on the first try" />
@@ -40,7 +40,7 @@ export function Sponsors({ sessionId, onGo }: { sessionId: string; onGo: (s: any
         <button onClick={() => onGo("port")}>See the port →</button>
       </Card>
 
-      <Card color="blue" logo="✦" name="Fetch.ai" role="Signed agents and a public agent on Agentverse">
+      <Card color="blue" name="Fetch.ai" role="Signed agents and a public agent on Agentverse">
         <div className="sp-bigs">
           <Big v={`${fa.verified}/${fa.messages}`} l="agent messages with a verified signature" />
           <Big v={`${fa.agents.length || 6}`} l="agents in the Bureau" />
@@ -55,7 +55,7 @@ export function Sponsors({ sessionId, onGo }: { sessionId: string; onGo: (s: any
         <button onClick={() => onGo("agents")}>See the signed messages →</button>
       </Card>
 
-      <Card color="teal" logo="◈" name="Subquadratic SubQ" role="Archivist: the whole history in one request">
+      <Card color="teal" name="Subquadratic SubQ" role="Archivist: the whole history in one request">
         <div className="sp-bigs">
           <Big v={subq.lastContext ? `${subq.lastContext.ratio.toFixed(1)}×` : "–"} l={`more context than the Theorist (${n(subq.lastContext?.archivistTokens)} vs ${n(subq.lastContext?.theoristTokens)} tokens)`} />
           <Big v={`${subq.rulesFound}`} l={`rules found that the Theorist didn't propose (${subq.rulesFoundProven} proven)`} />
@@ -69,7 +69,7 @@ export function Sponsors({ sessionId, onGo }: { sessionId: string; onGo: (s: any
         <button onClick={() => onGo("archivist")}>See the Archivist →</button>
       </Card>
 
-      <Card color="green" logo="◆" name="Google Gemini" role="Independent checks, a different model from the Theorist">
+      <Card color="green" name="Google Gemini" role="Independent checks, a different model from the Theorist">
         <div className="sp-bigs">
           <Big v={`${gemini.properties.hold}/${gemini.properties.proposed}`} l={`property tests that hold (${gemini.properties.discarded} wrong ones discarded)`} />
           <Big v={`${gemini.quirksFlagged}`} l="surprising behaviors flagged for Quirk Court" />
@@ -84,7 +84,7 @@ export function Sponsors({ sessionId, onGo }: { sessionId: string; onGo: (s: any
         <button onClick={() => onGo("verify")}>See Verify →</button>
       </Card>
 
-      <Card color="slate" logo="⬢" name="MongoDB Atlas" role="The ledger and the replay log">
+      <Card color="slate" name="MongoDB Atlas" role="The ledger and the replay log">
         <div className="sp-bigs">
           <Big v={n(mongodb.totalDocuments)} l="documents stored for this session" />
           <Big v={n(mongodb.observations)} l="recorded runs of the original" />
