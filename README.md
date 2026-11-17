@@ -155,8 +155,6 @@ Behaviors the agents found without being told what `f` does:
 The web UI opens on a home screen with the headline numbers and one button per section. Each section is a separate page. Every session can be watched live or replayed from its stored events, and links can point at a section: `?session=<id>&view=<section>&mode=replay`.
 
 ### Evidence and port
-![Evidence](docs/screenshots/01-overview.png)
-![Port](docs/screenshots/01b-port.png)
 - **Evidence page:** the left side lists every run of the minified original. The right side is the rule ledger, with status, confidence, number of supporting runs, the signing agent, and a marker on rules the Archivist found. Clicking a rule highlights the runs it cites.
 - **Port page:** each tagged line is colored by its evidence:
   - green: all of its rules are proven and a real run executed the line;
@@ -166,12 +164,9 @@ The web UI opens on a home screen with the headline numbers and one button per s
   Quirk lines are marked purple. Hovering a line shows its rules and how many runs executed it.
 
 ### Quirk Court
-![Quirk Court](docs/screenshots/02-quirk-court.png)
 Each card shows the rule, why it's surprising, example runs, and a suggested fix, with Preserve, Fix and Flag buttons. Pending counts as Preserve. A Fix takes one line describing the intended behavior, which the Skeptic turns into a check. "Apply decisions" then rebuilds the port, re-verifies it, and regenerates the contract.
 
 ### Challenge
-![Challenge](docs/screenshots/13-challenge.png)
-*Session A: H52 after a Challenge disproved it. The challenge runs are at the top of the trace.*
 
 Each rule card has a Challenge button, which runs one extra experiment round on that rule only.
 - **H52, disproven.** H52's check said every `.Nm` string returns 30000, generalized from its one example (`.5m`). The challenge ran `.1m` (6000), `.25m` (15000) and `.0m` (0), so H52 was disproven. The behavior was right; the rule was too narrow. When a challenge disproves a rule, the Theorist proposes a corrected rule, and it's tested right away.
@@ -180,7 +175,6 @@ Each rule card has a Challenge button, which runs one extra experiment round on 
 A Stop button ends a running session: steps already running finish, and no new ones start.
 
 ### Verify
-![Verify](docs/screenshots/03-verify.png)
 - **Fuzz:** 2,000 generated inputs run on both the original and the port.
 - **Held-out:** 500 inputs the agents never see, plus the score on the subset they never happened to try.
 - **Properties:** Gemini writes general properties. Any property that fails on the original is discarded, not counted against the port.
@@ -189,7 +183,6 @@ A Stop button ends a running session: steps already running finish, and no new o
 - **Security pass:** a ReDoS timing sweep from 10 to 50,000 characters, flat for `ms`.
 
 ### Archivist (SubQ)
-![Archivist](docs/screenshots/04-archivist.png)
 Once per round, one SubQ request gets the whole bundle and the full history (every run, every rule with its history, the quirks): about 70k tokens, while the Theorist's prompt is about 8.5k. It lists code that no run has executed, input categories that were never tested, and rules with little evidence, along with what was done about each.
 
 **Final audit.** Before the contract is generated, every tagged line of the port is checked:
@@ -200,32 +193,23 @@ Once per round, one SubQ request gets the whole bundle and the full history (eve
 Untagged executable lines are listed. Then one SubQ request (the port plus the ledger, about 10.8k tokens) asks, for each tagged rule, whether the tagged lines implement it. On session A's latest port, the audit found the port still citing H52 after the Challenge had disproven it, and 3 tags on code that doesn't implement the rule.
 
 ### Agents (Fetch.ai)
-![Agents](docs/screenshots/05-agents-signed.png)
 The coordinator runs the loop by messaging the Tracer, Theorist, Archivist, Builder and Skeptic. Every message and step request is signed by the sending agent, and the backend checks the signature before writing anything: 49 of 49 verified in session A.
 
 ### Contract
-![Contract blocking an edit](docs/screenshots/06-contract.png)
 An edited port, with the plural threshold changed from `1.5` to `2`, is run against the contract in the sandbox. Four tests fail: H20, H37, H49 and the held-out snapshot. Each failure shows the input, for example `f(90000, {long: true})`: expected `"2 minutes"`, got `"2 minute"`. The same contract is written to `out/contract.test.ts` for vitest.
 
 ### Port history
-![Port history](docs/screenshots/07-port-history.png)
 Every port version, with the model that wrote it, the compile result, mismatches, and lines that never ran. In session B, applying the trim Fix:
 - **v2 failed (11 disagreements).** The Skeptic's first check for the fix was broader than the fix itself.
 - **v3 and v4 pass.** The check was rewritten as a transform: new f(x) = original f(x.trim()).
 
 ### Report and Reveal
-![Report](docs/screenshots/08-report.png)
-![Reveal](docs/screenshots/09-reveal.png)
 The original `ms` source sits behind a path allowlist the agents can't get past. Only the Reveal page reads it, and only after the session ends.
 
 ### Sponsors
-![Sponsors](docs/screenshots/14-sponsors.png)
 One page per session showing what each sponsor's product did, computed from the stored data (`GET /sessions/:id/sponsors`). In session A, for example: 32 of the 39 rules Muse Spark proposed were proven, and both ports it wrote compiled on the first try; 49 of 49 agent messages had a verified signature; SubQ saw 8.3× more context than the Theorist and found 17 rules; 20 of 23 Gemini property tests held; and 1,028 MongoDB documents were stored. For sessions started from ASI:One, the Agents page also shows the incoming request: the caller's address and what they asked.
 
 ### ASI:One
-| Progress card | Quirk Court cards | Report card |
-|---|---|---|
-| ![](docs/screenshots/10-asi-progress-card.png) | ![](docs/screenshots/11-asi-quirk-cards.png) | ![](docs/screenshots/12-asi-report-card.png) |
 
 Session A was started from ASI:One with `@rosetta demo`.
 - `status` returns a progress card.
@@ -354,7 +338,6 @@ ui/               React and Monaco web UI
 scripts/          CLI commands and checks
 target/           minified target                           ground_truth/  original ms (hidden from agents)
 targets/          redos_demo.js (written by us for the security check)
-docs/screenshots/ images used in this README
 ```
 
 ## Limitations
